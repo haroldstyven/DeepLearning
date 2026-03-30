@@ -1,0 +1,30 @@
+# JupyterLab
+jupyterlab>=4.0
+ipywidgets
+ipykernel
+
+# Extensiones útiles para JupyterLab
+jupyterlab-lsp
+jupyterlab-execute-time
+
+# Data science core
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+scipy
+pillow
+
+# Deep learning (PyTorch with CUDA 12.6)
+torch
+torchvision
+torchaudio
+tensorflow
+
+# Utilities
+tqdm
+pyyaml
+requests
+pydot
+graphviz
