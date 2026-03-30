@@ -2,6 +2,7 @@
 venv/
 venv_mac/
 .env
+.vscode/
 
 # MacOS
 .DS_Store
