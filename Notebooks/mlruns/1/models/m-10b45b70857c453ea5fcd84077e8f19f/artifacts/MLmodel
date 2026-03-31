@@ -1,0 +1,24 @@
+artifact_path: file:///c:/Users/user/Documents/Harold Lagares/Maestria en Ingenieria/1er
+  semestre/Deep Learning/Notebooks/mlruns/1/models/m-10b45b70857c453ea5fcd84077e8f19f/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.12.3
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.10.1
+model_id: m-10b45b70857c453ea5fcd84077e8f19f
+model_size_bytes: 92249
+model_uuid: m-10b45b70857c453ea5fcd84077e8f19f
+prompts: null
+run_id: 75a894faa9af4f38884b9f6f007f3074
+utc_time_created: '2026-03-31 21:01:06.476813'
