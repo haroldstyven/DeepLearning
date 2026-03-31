@@ -13,3 +13,7 @@ __pycache__/
 
 # Jupyter
 .ipynb_checkpoints/
+
+Notebooks/*.joblib
+Notebooks/*.json
+mlflow.db
