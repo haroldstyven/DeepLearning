@@ -1,0 +1,347 @@
+\documentclass[12pt, a4paper]{article}
+
+% --- PAQUETES ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{lmodern}
+
+% --- GEOMETRÍA ---
+\geometry{
+  top=2.5cm,
+  bottom=2.5cm,
+  left=3cm,
+  right=2.5cm
+}
+
+% --- COLOR INSTITUCIONAL ---
+\definecolor{azulutb}{RGB}{0, 70, 127}
+\definecolor{grisclaro}{RGB}{245, 245, 245}
+\definecolor{grisnota}{RGB}{100, 100, 100}
+
+% --- FORMATO DE SECCIONES ---
+\titleformat{\section}
+  {\large\bfseries\color{azulutb}}
+  {\thesection.}{0.5em}{}[\titlerule]
+
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{azulutb!80}}
+  {\thesubsection}{0.5em}{}
+
+% --- ENCABEZADO Y PIE DE PÁGINA ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{grisnota}{Maestría en Ingeniería --- Deep Learning}}
+\fancyhead[R]{\small\textcolor{grisnota}{UTB}}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% --- HIPERLINKS ---
+\hypersetup{
+  colorlinks=true,
+  linkcolor=azulutb,
+  urlcolor=azulutb!70,
+  citecolor=azulutb
+}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+% --- PORTADA ---
+\begin{titlepage}
+  \centering
+  \vspace*{1.5cm}
+  {\Large\bfseries\color{azulutb} Universidad Tecnológica de Bolívar \par}
+  \vspace{0.3cm}
+  {\large Maestría en Ingeniería \par}
+  \vspace{2cm}
+  \rule{\linewidth}{1.2pt}\\[0.4cm]
+  {\LARGE\bfseries Informe de Ejercicios Propuestos \par}
+  {\large\bfseries Asignatura: Deep Learning --- Notebooks 07 al 13 \par}
+  \rule{\linewidth}{1.2pt}\\[2cm]
+
+  \begin{tabular}{rl}
+    \textbf{Estudiante:} & Harold Styven Lagares De Voz \\[4pt]
+    \textbf{Profesor:}   & Jairo Serrano Castañeda \\[4pt]
+    \textbf{Posgrado:}   & Maestría en Ingeniería \\[4pt]
+    \textbf{Institución:} & Universidad Tecnológica de Bolívar \\[4pt]
+    \textbf{Fecha:}      & Junio de 2026 \\
+  \end{tabular}
+
+  \vfill
+  {\small\textcolor{grisnota}{Este informe sintetiza los resultados y conclusiones de los ejercicios\\
+  desarrollados en los notebooks 07 a 13 de la asignatura de Deep Learning.}}
+\end{titlepage}
+
+% --- TABLA DE CONTENIDOS ---
+\tableofcontents
+\newpage
+
+% ============================================================
+% INTRODUCCIÓN
+% ============================================================
+\section{Introducción}
+
+El presente informe documenta los resultados y conclusiones derivados de la resolución de los ejercicios propuestos en los notebooks 07 a 13 del curso de Deep Learning. Este tramo del recorrido cubre los temas de mayor complejidad técnica: procesamiento de lenguaje natural con vectores semánticos, redes generativas antagónicas, autoencoders variacionales, técnicas de clustering y reducción de dimensionalidad, interpretabilidad de modelos, optimización del cómputo mediante aceleración por hardware, y despliegue de modelos en entornos productivos.
+
+Al igual que en el informe correspondiente a los notebooks 01--06, el objetivo de este documento no es reproducir el código implementado, sino articular de manera formal las observaciones, comparaciones y aprendizajes que emergieron de cada experimento. Las implementaciones aquí documentadas corresponden a la revisión y ampliación del marco de trabajo original, incorporando nuevas técnicas que profundizan los conceptos teóricos de cada tema.
+
+% ============================================================
+\section{Notebook 07: Transformers y NLP con spaCy}
+% ============================================================
+
+\subsection{Eficiencia del procesamiento por lotes con \texttt{nlp.pipe()}}
+
+El primer ejercicio abordó una comparativa de rendimiento entre el procesamiento secuencial de texto mediante bucle simple (\texttt{nlp(texto)}) y el procesamiento por lotes mediante \texttt{nlp.pipe()}. Se generaron 100 textos a partir de cinco frases base y se midió el tiempo total de procesamiento con el modelo \texttt{en\_core\_web\_md} de spaCy (vectores GloVe de 300 dimensiones sobre un vocabulario de 20,000 palabras).
+
+Los resultados mostraron que \texttt{nlp.pipe()} con un tamaño de lote de 32 elementos completó el procesamiento en aproximadamente el 55\% del tiempo requerido por el bucle simple, una aceleración de alrededor de $1.8\times$. La equivalencia de los resultados entre ambos métodos fue verificada mediante una aserción sobre los textos del objeto \texttt{Doc} producido. Esta diferencia, moderada en lotes de 100 textos, se amplifica significativamente con volúmenes del orden de decenas de miles, donde el costo fijo de inicialización del pipeline se amortiza en un mayor número de operaciones.
+
+\subsection{Vectores GloVe como análogo a la atención: ranking semántico}
+
+El tercer ejercicio exploró la capacidad de los vectores de palabras GloVe para ordenar frases por su proximidad semántica a una referencia, reproduciendo conceptualmente la función que ejerce la matriz de atención en los Transformers. Partiendo de la frase ``Artificial intelligence is changing the world'' como referencia, se calculó la similitud coseno (\texttt{doc.similarity()}) entre dicha referencia y ocho frases candidatas de dominios semánticos variados (inteligencia artificial, deportes, clima, mercados financieros).
+
+Las frases del dominio de aprendizaje automático y redes neuronales obtuvieron similitudes superiores a 0.93, mientras que las frases de dominios semánticamente alejados (deportes, entorno doméstico) no superaron el 0.65. La visualización mediante gráfica de barras horizontales con escala de color \texttt{RdYlGn} hizo explícita la gradación de la relevancia semántica. Este ejercicio confirma que la similitud coseno entre embeddings estáticos de frases captura relaciones temáticas de forma análoga a como las cabezas de atención en BERT ponderan la relevancia entre pares de tokens.
+
+\subsection{Extensión del pipeline NER con \texttt{EntityRuler}}
+
+El cuarto ejercicio incorporó un componente \texttt{EntityRuler} personalizado al pipeline de spaCy, insertado antes del reconocedor de entidades por defecto para garantizar precedencia. Se definieron 14 patrones distribuidos en dos etiquetas: \texttt{AI\_MODEL} (modelos de lenguaje e imagen como GPT-4, BERT, Claude, Stable Diffusion) y \texttt{AI\_ORG} (organizaciones como OpenAI, Anthropic, DeepMind, Hugging Face).
+
+Al procesar cuatro oraciones de prueba sobre el ecosistema de la inteligencia artificial, el pipeline extendido detectó correctamente la totalidad de las entidades personalizadas sin interferir con las entidades estándar del modelo base (personas, lugares, fechas). La visualización mediante \texttt{displaCy} con colores diferenciados (\texttt{\#4fc3f7} para modelos, \texttt{\#81c784} para organizaciones) permitió verificar la correcta segmentación. La combinación del \texttt{EntityRuler} con el NER preentrenado representa una estrategia de adaptación de dominio sin re-entrenamiento, particularmente valiosa cuando el vocabulario especializado del dominio es estable y acotado.
+
+\subsection{Reflexión}
+
+El uso de spaCy con vectores GloVe preentrenados ofrece una alternativa robusta al ecosistema HuggingFace para tareas de NLP de mediana complejidad: sin requerimiento de token de autenticación, con velocidad de inferencia superior y con capacidad de extensión mediante reglas explícitas. La combinación de embeddings estáticos para similitud semántica y el \texttt{EntityRuler} para reconocimiento de entidades de dominio cubre el 80\% de los casos de uso industriales más frecuentes en producción.
+
+% ============================================================
+\section{Notebook 08: Redes Generativas Antagónicas (GANs)}
+% ============================================================
+
+\subsection{GAN densa en Fashion MNIST}
+
+El segundo ejercicio evaluó la capacidad de generalización de la arquitectura GAN basada en capas densas al dataset Fashion MNIST, compuesto por 60,000 imágenes de 28$\times$28 píxeles de prendas de vestir en escala de grises. La misma arquitectura empleada para MNIST (generador con \texttt{BatchNormalization} y \texttt{LeakyReLU}, label smoothing en 0.9) fue entrenada durante 1,000 épocas con \texttt{batch\_size} de 128 y un optimizador Adam con tasa de aprendizaje de $10^{-4}$.
+
+El modelo logró producir siluetas reconocibles de prendas de ropa, aunque con el nivel de borrosidad característico de las arquitecturas densas. El equilibrio entre las pérdidas del discriminador y el generador fue más inestable que en MNIST, con la pérdida del discriminador tendiendo a crecer progresivamente a partir de la época 400, señal de que el generador no logró mantener el ritmo de aprendizaje del discriminador ante la mayor complejidad espacial de las prendas. Fashion MNIST, al presentar variaciones texturales sutiles (costuras, pliegues, contornos irregulares), requiere que el modelo capture dependencias locales de píxeles que las capas densas, al operar sobre vectores aplanados de 784 elementos, no pueden modelar eficientemente.
+
+\subsection{DCGAN con arquitectura convolucional}
+
+El tercer ejercicio implementó una DCGAN (\textit{Deep Convolutional GAN}) sobre MNIST, sustituyendo las capas densas por una arquitectura jerárquica de convoluciones. El generador parte de un vector de ruido de dimensión 100 y lo proyecta a un tensor de $7 \times 7 \times 128$, que es progresivamente expandido mediante dos capas \texttt{Conv2DTranspose} con \textit{strides} de 2 hasta alcanzar la resolución objetivo de $28 \times 28 \times 1$. El discriminador aplica la transformación inversa con \texttt{Conv2D} con \textit{strides}, reduciendo la imagen a un escalar de probabilidad.
+
+La comparativa directa entre la GAN densa y la DCGAN, alimentadas con el mismo vector de ruido, evidenció una mejora cualitativa sustancial: la DCGAN produjo trazos con bordes mejor definidos, mayor contraste entre el trazo y el fondo, y menor presencia de artefactos de alta frecuencia. El uso de hiperparámetros consagrados para la estabilidad adversarial (\texttt{LeakyReLU} con pendiente 0.2, \texttt{BatchNormalization}, Adam con $\beta_1 = 0.5$) mantuvo las pérdidas del discriminador y el generador en rangos comparables a lo largo de las 1,000 épocas de entrenamiento.
+
+\subsection{Reflexión}
+
+La elección de arquitectura en las GANs tiene un impacto directo y observable en la calidad generativa, no solo en las métricas de pérdida. Las convoluciones transpuestas no son simplemente una variante más compleja, sino la herramienta apropiada cuando el dominio del problema tiene estructura espacial. Para imágenes de resolución superior a $64 \times 64$ píxeles, las DCGAN y sus descendientes (StyleGAN, Diffusion Models) son la única opción práctica.
+
+% ============================================================
+\section{Notebook 09: Autoencoders}
+% ============================================================
+
+\subsection{Exploración del espacio latente del VAE mediante muestreo e interpolación}
+
+El segundo ejercicio aprovechó el VAE entrenado (espacio latente bidimensional) para explorar de forma sistemática la continuidad y la estructura de la distribución aprendida. Se realizaron dos experimentos complementarios: un muestreo aleatorio desde $\mathcal{N}(0, I)$ (15 puntos) y una interpolación en cuadrícula de $15 \times 15$ sobre la región $[-3, 3]^2$ del espacio latente.
+
+El muestreo aleatorio produjo imágenes de dígitos reconocibles pero con cierta variabilidad de calidad, esperada dada la distancia variable de los puntos muestreados respecto a las regiones de alta densidad de la distribución posterior. El experimento más revelador fue la cuadrícula de interpolación: al recorrer el espacio latente de forma sistemática, las transiciones entre dígitos son suaves y continuas, sin discontinuidades abruptas. Las zonas centrales del espacio concentran los dígitos de mayor frecuencia (1, 7), mientras que las zonas periféricas contienen dígitos menos representados o formas de transición. Este comportamiento confirma que la regularización KL cumplió su función: el espacio latente aprendido es continuo y muestreable, no una colección de islas discretas como ocurriría en un autoencoder estándar.
+
+\subsection{Autoencoder convolucional: comparativa de calidad de reconstrucción}
+
+El tercer ejercicio implementó un autoencoder convolucional con una arquitectura encoder--decoder completamente simétrica: el encoder aplica dos bloques \texttt{Conv2D} + \texttt{MaxPooling2D} (de $28 \times 28$ a $14 \times 14$ a $7 \times 7$), mientras que el decoder los invierte mediante \texttt{Conv2DTranspose} + \texttt{UpSampling2D}. El espacio latente resultante tiene dimensión $7 \times 7 \times 16$ (784 valores), equiparable al \texttt{encoding\_dim} = 32 del autoencoder denso.
+
+La Tabla~\ref{tab:ae} compara los cuatro modelos de autoencoder entrenados sobre MNIST en términos de MSE en el conjunto de prueba.
+
+\begin{table}[h!]
+  \centering
+  \caption{Comparativa de error de reconstrucción (MSE) entre variantes de autoencoder.}
+  \label{tab:ae}
+  \begin{tabular}{lcccc}
+    \toprule
+    \textbf{Modelo} & \textbf{MSE test} & \textbf{Espacio latente} & \textbf{Genera datos} & \textbf{Tiempo (s)} \\
+    \midrule
+    AE Denso        & $\approx 0.00123$ & 32 dims   & No  & $\approx 8$  \\
+    Denoising AE    & $\approx 0.00116$ & 32 dims   & No  & $\approx 5$  \\
+    VAE             & $\approx 0.00342$ & 2 dims    & Sí  & $\approx 20$ \\
+    AE Convolucional & $\approx 0.00082$ & $7\times7\times16$ & No & $\approx 18$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+El autoencoder convolucional obtuvo el MSE más bajo de los cuatro modelos. La diferencia respecto al VAE no debe interpretarse como una superioridad incondicional: el VAE sacrifica precisión de reconstrucción para ganar estructura latente muestreable, un intercambio explícitamente regulado por la pérdida KL. Entre el autoencoder denso y el convolucional, la diferencia de aproximadamente un tercio en el MSE se explica por la capacidad de las convoluciones para capturar dependencias espaciales locales (bordes, curvas de los dígitos) que los pesos densas, operando sobre vectores aplanados, no pueden modelar sin recurrir a una mayor capacidad paramétrica.
+
+\subsection{Reflexión}
+
+La familia de autoencoders ilustra con claridad el principio de diseño orientado al objetivo: la arquitectura más adecuada no es la de menor MSE, sino la que mejor se alinea con el uso esperado del modelo. La elección entre autoencoder denso, denoising, variacional o convolucional debe basarse en si el objetivo es compresión eficiente, robustez al ruido, generación controlada o máxima fidelidad de reconstrucción, respectivamente.
+
+% ============================================================
+\section{Notebook 10: Clustering y Reducción de Dimensionalidad}
+% ============================================================
+
+\subsection{Evaluación cuantitativa de PCA y t-SNE en el dataset Digits}
+
+El tercer ejercicio extendió el análisis de reducción de dimensionalidad al dataset \textit{Digits} de scikit-learn (1,797 muestras, 64 \textit{features}, 10 clases), un escenario más exigente que Iris en cuanto a dimensionalidad y número de clases. Se aplicaron PCA (reducción lineal directa a 2 componentes) y t-SNE (con pre-reducción a 50 componentes mediante PCA para acelerar el cómputo). Sobre cada proyección se aplicó K-Means con $K=10$ y se calcularon el \textit{Adjusted Rand Index} (ARI) y el \textit{Silhouette Score}.
+
+PCA completó la proyección en menos de 0.05 segundos, explicando apenas el 28.6\% de la varianza total en las dos primeras componentes. La visualización resultante mostró solapamiento considerable entre clases, particularmente entre los dígitos 3, 5, 8 y 9. El K-Means aplicado sobre la proyección PCA obtuvo un ARI de aproximadamente 0.41. t-SNE requirió cerca de 12 segundos pero logró separar las 10 clases en agrupaciones visualmente distintas, con el K-Means sobre la proyección t-SNE alcanzando un ARI de aproximadamente 0.68. Sin embargo, el K-Means aplicado directamente sobre los 64 \textit{features} escalados superó a ambas proyecciones con el mayor ARI (~0.72), lo que evidencia una pérdida de información métrica global durante la reducción.
+
+\subsection{Clustering jerárquico Ward y dendrograma}
+
+El cuarto ejercicio implementó \texttt{AgglomerativeClustering} con criterio de enlace Ward sobre el dataset Iris, y construyó el dendrograma correspondiente sobre una muestra de 50 observaciones mediante la función \texttt{linkage} de SciPy. El dendrograma, cortado a una altura de 3.5 unidades de distancia Ward, sugiere naturalmente la presencia de 3 grupos, coincidiendo con las 3 especies reales del dataset.
+
+La comparativa de los tres métodos aplicados a Iris se resume en la Tabla~\ref{tab:clustering}.
+
+\begin{table}[h!]
+  \centering
+  \caption{Comparativa de métodos de clustering sobre el dataset Iris.}
+  \label{tab:clustering}
+  \begin{tabular}{lcc}
+    \toprule
+    \textbf{Método} & \textbf{Silhouette Score} & \textbf{ARI} \\
+    \midrule
+    K-Means ($K=3$)          & 0.551 & 0.730 \\
+    DBSCAN ($\varepsilon=0.6$) & 0.489 & 0.562 \\
+    Jerárquico Ward ($K=3$)  & 0.547 & 0.721 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+K-Means y el método jerárquico Ward obtuvieron rendimientos equivalentes en este dataset, lo cual es esperado dado que Iris presenta clusters aproximadamente esféricos y sin ruido, el escenario ideal para ambos algoritmos. La ventaja del método jerárquico reside en que el dendrograma permite determinar el número de clusters sin necesidad de calcular silhouette o inercia para múltiples valores de $K$: la inspección visual del árbol es suficiente cuando los grupos naturales son bien definidos. DBSCAN, calibrado para Iris, detectó clusters aceptables pero con menor fidelidad respecto a las etiquetas reales, resultado esperado en datos con geometría esférica donde la densidad relativa no es el criterio más discriminante.
+
+\subsection{Reflexión}
+
+La selección del algoritmo de clustering no debe basarse en el nombre sino en las propiedades asumidas sobre los datos: esfericidad y número de clusters conocido favorecen K-Means; estructura de árbol e incertidumbre sobre $K$ favorecen el jerárquico; presencia de ruido y clusters de forma arbitraria justifican DBSCAN. La reducción de dimensionalidad previa es en general beneficiosa para la estabilidad de los algoritmos de distancia, pero introduce una pérdida de información métrica global que debe tenerse en cuenta al interpretar el ARI.
+
+% ============================================================
+\section{Notebook 11: Interpretabilidad de Modelos}
+% ============================================================
+
+\subsection{Consistencia de SHAP entre Random Forest y Gradient Boosting}
+
+El primer ejercicio extendió el análisis SHAP al \texttt{GradientBoostingClassifier} (100 estimadores) entrenado sobre el mismo dataset de cáncer de mama del cuerpo principal del notebook. Aplicando \texttt{shap.TreeExplainer} a ambos modelos, se compararon los \textit{summary plots} y los rankings de importancia media por módulo del valor SHAP ($\overline{|\text{SHAP}|}$).
+
+Los modelos coincidieron en 4 de las 5 características más influyentes (principalmente \textit{worst area}, \textit{worst concave points}, \textit{mean concave points} y \textit{worst radius}), con diferencias solo en el orden relativo y en la magnitud de las contribuciones. Ambos alcanzaron una precisión similar en el conjunto de prueba (alrededor del 96.5\%). Esta convergencia entre dos algoritmos con estrategias de construcción de árboles fundamentalmente distintas (Random Forest construye árboles independientes con submuestreo aleatorio; Gradient Boosting los construye secuencialmente minimizando residuos) refuerza la conclusión de que las características identificadas son genuinamente relevantes para la tarea, y no artefactos de una arquitectura específica.
+
+\subsection{Modelo surrogate para interpretabilidad eficiente de redes neuronales}
+
+El cuarto ejercicio abordó el problema práctico del costo computacional del \texttt{KernelExplainer} para redes neuronales. La solución implementada consistió en entrenar un árbol de decisión de profundidad máxima 4 (\textit{surrogate model}) sobre las predicciones del MLP, y aplicar el rápido \texttt{TreeExplainer} sobre este árbol en lugar del costoso \texttt{KernelExplainer} sobre la red original.
+
+El árbol surrogate alcanzó una \textit{fidelidad} (fracción de predicciones del MLP reproducidas correctamente) de aproximadamente 0.938, indicando que modela fielmente el comportamiento de la red en casi el 94\% de las instancias. La comparativa de tiempos fue contundente: el \texttt{TreeExplainer} sobre el surrogate completó la explicación de las 114 muestras del conjunto de prueba en aproximadamente 2 ms, frente a los más de 5 minutos requeridos por el \texttt{KernelExplainer} sobre solo 20 muestras. El \textit{speedup} estimado supera las 1,000 veces. La comparativa de los 5 \textit{features} más influyentes entre ambos métodos mostró una coincidencia de 4 de 5, lo que valida la confiabilidad del surrogate como aproximación interpretable para uso en producción.
+
+\subsection{Reflexión}
+
+La interpretabilidad de modelos complejos no requiere necesariamente métodos exactos y costosos. La estrategia del modelo surrogate --entrenar un modelo simple e interpretable que imite el comportamiento de uno complejo-- es una técnica pragmática con sólido soporte teórico y empírico. Su viabilidad depende de que la fidelidad sea suficientemente alta; en caso contrario, el surrogate estaría describiendo su propio comportamiento, no el de la red original.
+
+% ============================================================
+\section{Notebook 12: CPU, GPU y Aceleración de Hardware}
+% ============================================================
+
+\subsection{Impacto del \textit{batch size} en el tiempo de entrenamiento}
+
+El segundo ejercicio realizó un barrido sistemático del \textit{batch size} sobre cinco valores (32, 64, 128, 256, 512) para los modelos MLP y CNN entrenados durante 3 épocas en CPU. La Tabla~\ref{tab:batchsize} resume los tiempos observados.
+
+\begin{table}[h!]
+  \centering
+  \caption{Tiempo de entrenamiento (s) en CPU según \textit{batch size} (3 épocas, MNIST).}
+  \label{tab:batchsize}
+  \begin{tabular}{ccc}
+    \toprule
+    \textbf{\textit{Batch size}} & \textbf{MLP (s)} & \textbf{CNN (s)} \\
+    \midrule
+    32  & $\approx 18.4$ & $\approx 313$ \\
+    64  & $\approx 12.2$ & $\approx 287$ \\
+    128 & $\approx 9.5$  & $\approx 271$ \\
+    256 & $\approx 7.9$  & $\approx 266$ \\
+    512 & $\approx 6.7$  & $\approx 269$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Para el MLP, la relación entre \textit{batch size} y tiempo de entrenamiento es monótonamente decreciente en el rango evaluado: cada duplicación del tamaño de lote reduce el tiempo en aproximadamente un 20--25\%, resultado de la disminución del número de actualizaciones de pesos por época y del amortizamiento del overhead de Python por paso (\textit{step}). Para la CNN, la reducción es más pronunciada en los valores bajos (de 32 a 128) y se aplana a partir de 256, donde el cuello de botella comienza a trasladarse de la frecuencia de actualización al cómputo de las convoluciones en sí. En GPU, el fenómeno es análogo pero con el punto de saturación desplazado hacia valores superiores (256--512), dado que la mayor cantidad de núcleos de cómputo paralelo puede aprovechar lotes más grandes antes de alcanzar la saturación.
+
+\subsection{Optimización del pipeline de datos con \texttt{tf.data}}
+
+El cuarto ejercicio comparó dos pipelines de carga de datos para 5 épocas de entrenamiento en CPU: un pipeline base (\texttt{Dataset.from\_tensor\_slices().batch()}) y un pipeline optimizado (\texttt{.cache().shuffle().batch().prefetch(AUTOTUNE)}). La mejora observada fue del orden del 18--22\% en tiempo total para el MLP y del 12--15\% para la CNN.
+
+El mecanismo de \texttt{cache()} almacena el conjunto de datos completo en RAM tras la primera época, eliminando la lectura y deserialización del tensor en las épocas sucesivas. El mecanismo \texttt{prefetch(AUTOTUNE)} superpone la preparación del siguiente lote de datos con la ejecución del paso de entrenamiento actual, eliminando el tiempo muerto de espera en la CPU mientras la GPU (o el núcleo de cómputo de la CPU) procesa el lote anterior. La mejora porcentual es moderada en CPU porque el cuello de botella principal es el cómputo de las operaciones matriciales, no la carga de datos. En GPU, donde el cómputo es más rápido, la proporción del tiempo dedicada a la carga de datos es mayor, y la mejora del pipeline puede llegar a ser de un factor $2\times$ o superior.
+
+\subsection{Reflexión}
+
+La optimización del rendimiento en Deep Learning debe atacarse en capas: primero el pipeline de datos (cuello de botella frecuentemente subestimado), luego el \textit{batch size}, y finalmente la arquitectura del hardware. Un pipeline de datos ineficiente puede neutralizar completamente la ventaja de una GPU de última generación. La regla práctica es: antes de escalar hardware, medir si el cuello de botella está en el cómputo o en la I/O de datos.
+
+% ============================================================
+\section{Notebook 13: Despliegue de Modelos}
+% ============================================================
+
+\subsection{Endpoint de predicción por lotes}
+
+El primer ejercicio implementó un endpoint \texttt{POST /predict/batch} que acepta una lista arbitraria de observaciones (validada mediante Pydantic) y devuelve una predicción con probabilidades por clase para cada una. La lógica del handler fue primero implementada y probada de forma directa (fuera del servidor HTTP) para validar la corrección del resultado, y luego integrada en el archivo \texttt{deploy/app.py}.
+
+Un experimento de \textit{benchmarking} comparó el tiempo de procesamiento de 100 predicciones mediante una única llamada batch frente a 100 llamadas individuales. La llamada batch completó el proceso en menos de 1 ms, mientras que el bucle de llamadas individuales requirió aproximadamente 8 ms, un \textit{speedup} de $10\times$. En el contexto de una API HTTP real, la diferencia sería aún mayor: cada llamada individual carga el overhead de serialización HTTP, negociación de conexión TCP y deserialización de JSON, costos que en el caso batch se pagan una sola vez con independencia del número de observaciones. Para pipelines de inferencia a escala (cientos de miles de predicciones diarias), la diferencia entre endpoints batch e individuales puede traducirse en reducciones de latencia acumulada de varios órdenes de magnitud.
+
+\subsection{Contenedorización multi-etapa con Docker}
+
+El tercer ejercicio rediseñó el \texttt{Dockerfile} original usando una estrategia de construcción multi-etapa. La primera etapa (\texttt{AS deps}) usa \texttt{python:3.10-slim} como base e instala las dependencias con el prefijo \texttt{/packages}, sin incorporar los artefactos de la aplicación. La segunda etapa (\texttt{AS runtime}), también basada en \texttt{python:3.10-slim}, copia solo los paquetes instalados desde la primera etapa mediante \texttt{COPY --from=deps}, junto con el modelo serializado y el código de la API.
+
+El beneficio principal de esta estrategia es la eliminación de \texttt{pip} y sus metadatos del contenedor de producción. Para la API de Iris con dependencias ligeras (scikit-learn, FastAPI, NumPy), el ahorro es de aproximadamente 20--25 MB. Para proyectos con dependencias de mayor peso (PyTorch, $\approx$800 MB; TensorFlow, $\approx$500 MB), la separación entre etapa de instalación y etapa de runtime puede reducir el tamaño final de la imagen en 200--500 MB, con impacto directo en los tiempos de descarga y despliegue en plataformas cloud. Adicionalmente, la imagen resultante no contiene herramientas de compilación ni gestores de paquetes, lo que reduce la superficie de ataque en términos de seguridad.
+
+\subsection{Reflexión}
+
+El despliegue de modelos en producción requiere el mismo rigor de diseño que la arquitectura del modelo. Un endpoint batch bien diseñado y un contenedor con capas mínimas no son optimizaciones cosméticas: son decisiones de ingeniería con impacto directo en el costo operativo, la latencia de respuesta y la seguridad del sistema. El ciclo completo entrenamiento -- validación -- API -- contenedor -- versionamiento constituye el mínimo viable para un sistema de ML reproducible y mantenible.
+
+% ============================================================
+\section{Conclusiones Generales}
+% ============================================================
+
+El recorrido por los notebooks 07 a 13 consolidó los aspectos más avanzados del ciclo de vida del aprendizaje profundo, desde la representación semántica del lenguaje hasta el despliegue en contenedores. A continuación se enuncian las lecciones transversales más relevantes de este tramo:
+
+\begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}]
+
+  \item \textbf{Los embeddings estáticos son una herramienta de producción viable.} La similitud coseno entre vectores GloVe reproduce relaciones semánticas comparables a las matrices de atención de los Transformers para tareas de proximidad temática, sin requerir infraestructura de inferencia costosa. La elección entre embeddings estáticos y modelos contextuales debe basarse en el requisito real de comprensión del contexto, no en la disponibilidad de la herramienta más moderna.
+
+  \item \textbf{La arquitectura determina la representación, no solo el rendimiento.} La transición de una GAN densa a una DCGAN, o de un autoencoder denso a uno convolucional, no es solo una mejora cuantitativa en MSE o en calidad visual: refleja un cambio en el tipo de inducción estructural que el modelo puede explotar. Adaptar la arquitectura a la geometría del dominio del problema (espacial, temporal, semántica) es una decisión de diseño fundamental.
+
+  \item \textbf{El espacio latente del VAE tiene propiedades verificables.} La interpolación en cuadrícula sobre el espacio latente 2D no es solo una visualización bonita: es una prueba empírica de que la regularización KL cumplió su función. Un espacio latente discontinuo o con regiones vacías indicaría que la red aprendió un autoencoder convencional disfrazado de VAE.
+
+  \item \textbf{La reducción de dimensionalidad no preserva la métrica global.} t-SNE produce visualizaciones superiores a PCA para descubrir agrupamientos intrínsecos, pero las coordenadas t-SNE no conservan las distancias del espacio original. K-Means aplicado sobre el espacio original de 64 dimensiones superó al aplicado sobre la proyección t-SNE en términos de ARI, lo que subraya que la elección del espacio de representación para clustering en producción debe priorizar la preservación de la geometría, no la separabilidad visual.
+
+  \item \textbf{La interpretabilidad tiene un costo computacional que puede gestionarse.} El modelo surrogate ofrece un equilibrio practicable entre exactitud explicativa y eficiencia: una fidelidad del 93\% con un \textit{speedup} de $10^3\times$ frente al \texttt{KernelExplainer} lo convierte en la opción por defecto para entornos de producción donde se requieren explicaciones en tiempo real.
+
+  \item \textbf{El pipeline de datos es el cuello de botella oculto.} La optimización de \texttt{tf.data} con \texttt{cache} y \texttt{prefetch} mejora el rendimiento antes de invertir en hardware más potente. En GPU, donde el cómputo es más rápido, la proporción del tiempo de I/O es mayor, y el impacto del pipeline es más pronunciado.
+
+  \item \textbf{El despliegue es una disciplina de ingeniería, no un paso final trivial.} Un endpoint batch, un Dockerfile multi-etapa y un sistema de versionamiento de modelos no son adornos: son los mecanismos que convierten un experimento exitoso en un servicio confiable, reproducible y auditable.
+
+\end{enumerate}
+
+% ============================================================
+% REFERENCIAS
+% ============================================================
+\newpage
+\section*{Referencias}
+\addcontentsline{toc}{section}{Referencias}
+
+\begin{itemize}[leftmargin=*]
+  \item Pennington, J., Socher, R., \& Manning, C. D. (2014). GloVe: Global Vectors for Word Representation. \textit{Proceedings of EMNLP}.
+  \item Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention is all you need. \textit{Advances in Neural Information Processing Systems}, 30.
+  \item Goodfellow, I., Pouget-Abadie, J., Mirza, M., et al. (2014). Generative adversarial nets. \textit{Advances in Neural Information Processing Systems}, 27.
+  \item Kingma, D. P., \& Welling, M. (2014). Auto-Encoding Variational Bayes. \textit{International Conference on Learning Representations (ICLR)}.
+  \item Lundberg, S. M., \& Lee, S.-I. (2017). A unified approach to interpreting model predictions. \textit{Advances in Neural Information Processing Systems}, 30.
+  \item Géron, A. (2019). \textit{Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow} (2nd ed.). O'Reilly Media.
+  \item Documentación oficial de spaCy: \url{https://spacy.io/usage}
+  \item Documentación oficial de Keras/TensorFlow: \url{https://keras.io/}
+  \item Documentación oficial de scikit-learn: \url{https://scikit-learn.org/stable/}
+  \item FastAPI Documentation: \url{https://fastapi.tiangolo.com/}
+  \item Docker Multi-stage builds: \url{https://docs.docker.com/build/building/multi-stage/}
+  \item TensorFlow \texttt{tf.data} Performance Guide: \url{https://www.tensorflow.org/guide/data_performance}
+\end{itemize}
+
+\end{document}

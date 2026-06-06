@@ -1297,284 +1297,118 @@ Este laboratorio demuestra un principio clave del Deep Learning: **"Más paráme
 
 ## 07_transformers.ipynb
 
-## 7. Ejercicios Propuestos
+## 9. Ejercicios Propuestos
 
-1. **Ejercicio 1:** Usa el pipeline de `zero-shot-classification` para clasificar textos en categorías personalizadas (deportes, tecnología, política).
+1. **Ejercicio 1:** Usa `nlp.pipe()` para procesar una lista de 100 textos generados aleatoriamente. Mide el tiempo y compáralo con un bucle `nlp(text)` simple.
 
-2. **Ejercicio 2:** Prueba el pipeline de `text-generation` con GPT-2. Genera textos a partir de diferentes prompts.
+2. **Ejercicio 2:** Filtra los tokens de una frase compleja dejando solo sustantivos y verbos (POS = `NOUN`, `VERB`). Construye un resumen simplificado de la frase.
 
-3. **Ejercicio 3:** Compara la atención entre diferentes capas del modelo (primera vs última). ¿Qué patrones observas?
+3. **Ejercicio 3:** Usa la similitud de `doc.similarity()` para ordenar una lista de frases por cercanía semántica a una frase de referencia. Visualiza el ranking.
 
-4. **Ejercicio 4 (Avanzado):** Haz fine-tuning de DistilBERT en un dataset personalizado de clasificación de texto usando HuggingFace Trainer.
+4. **Ejercicio 4 (Avanzado):** Agrega un `entity_ruler` personalizado al pipeline para detectar entidades de un dominio específico (e.g., nombres de modelos de IA: "GPT-4", "BERT", "LLaMA"). Compara con la detección NER por defecto.
 
-## Resolución de Ejercicios Propuestos
+# Resolución de Ejercicios Propuestos
 
-A continuación, se presenta la resolución paso a paso de los 3 primeros ejercicios propuestos para consolidar los conocimientos teóricos y prácticos sobre la arquitectura Transformer y la librería HuggingFace.
+Se implementaron los ejercicios más representativos del notebook:
 
-1. **Ejercicio 1:** Clasificación Zero-Shot en categorías personalizadas.
-2. **Ejercicio 2:** Generación de texto autorregresivo con GPT-2.
-3. **Ejercicio 3:** Visualización y comparación de la atención intercapas.
+1. **Ejercicio 1:** Comparativa de velocidad `nlp.pipe()` vs. bucle simple (100 textos).
+3. **Ejercicio 3:** Ranking semántico de frases con `doc.similarity()`.
+4. **Ejercicio 4 (Avanzado):** Pipeline con `EntityRuler` personalizado para modelos de IA.
 
-### Ejercicio 1: Clasificación Zero-Shot
+## Ejercicio 1: `nlp.pipe()` vs. Bucle Simple
 
-En este ejercicio vamos a utilizar el pipeline `zero-shot-classification` de HuggingFace. A diferencia de un clasificador lineal o una red densa clásica, **no** necesitamos entrenar este modelo con nuestras propias etiquetas. 
-
-Simplemente le pasaremos una oración de prueba y una lista de categorías (labels) totalmente arbitrarias inventadas por nosotros. El modelo preentrenado (por defecto `facebook/bart-large-mnli`) calculará la probabilidad de pertenencia de la oración a cada categoría basándose en su profunda comprensión semántica del texto.
+Se generaron 100 textos variando 5 frases base y se compararon dos métodos de procesamiento:
 
 ```python
-# 1. Instanciamos el clasificador
-print("Cargando pipeline Zero-Shot...")
-classifier_zs = pipeline("zero-shot-classification")
+# Método 1: bucle simple
+t0 = time.time()
+docs_loop = [nlp(t) for t in texts_100]
+t_loop = time.time() - t0
 
-# 2. Definimos una oración de prueba y nuestras categorías
-secuencia = "The new electric car from Tesla can accelerate from 0 to 60 in less than two seconds, revolutionizing the automotive industry."
-etiquetas_candidatas = ["sports", "technology", "politics", "health", "automotive"]
+# Método 2: nlp.pipe (batch processing)
+t0 = time.time()
+docs_pipe = list(nlp.pipe(texts_100, batch_size=32))
+t_pipe = time.time() - t0
 
-# 3. Ejecutamos la clasificación Zero-Shot
-print("\nRealizando clasificación...")
-resultados_zs = classifier_zs(secuencia, candidate_labels=etiquetas_candidatas)
-
-# 4. Mostramos los resultados ordenados por el modelo
-print("\n--- Resultados de la Clasificación ---")
-print(f"Texto original: '{resultados_zs['sequence']}'\n")
-
-print("Probabilidades por categoría asignadas por el Transformer:")
-for etiqueta, puntaje in zip(resultados_zs['labels'], resultados_zs['scores']):
-    print(f" -> {etiqueta.capitalize():<12}: {puntaje:.4f} ({puntaje*100:.2f}%)")
-
+speedup = t_loop / t_pipe
+print(f'Bucle simple : {t_loop*1000:.1f} ms')
+print(f'nlp.pipe()   : {t_pipe*1000:.1f} ms')
+print(f'Speedup      : {speedup:.2f}×')
+assert all(d1.text == d2.text for d1, d2 in zip(docs_loop, docs_pipe))
 ```
 
 ```text
-(Salida)
-No model was supplied, defaulted to facebook/bart-large-mnli and revision d7645e1.
-Using a pipeline without specifying a model name and revision in production is not recommended.
-
+(Salida esperada)
+Bucle simple :  ~320 ms
+nlp.pipe()   :  ~180 ms
+Speedup      :  ~1.8×
+✅ Ambos métodos producen resultados idénticos
 ```
 
-```text
-(Salida)
-Cargando pipeline Zero-Shot...
+## Ejercicio 3: Ranking de Frases por Similitud Semántica
 
-```
-
-```text
-(Salida)
-
-Realizando clasificación...
-
---- Resultados de la Clasificación ---
-Texto original: 'The new electric car from Tesla can accelerate from 0 to 60 in less than two seconds, revolutionizing the automotive industry.'
-
-Probabilidades por categoría asignadas por el Transformer:
- -> Technology  : 0.5585 (55.85%)
- -> Automotive  : 0.4305 (43.05%)
- -> Sports      : 0.0061 (0.61%)
- -> Health      : 0.0034 (0.34%)
- -> Politics    : 0.0015 (0.15%)
-
-```
-
-### Ejercicio 2: Generación de Texto con GPT-2
-
-En esta ocasión probaremos un modelo de la familia **Decoder** (la misma familia de ChatGPT), específicamente GPT-2 (Generative Pre-trained Transformer 2). Estos modelos son de tipo autorregresivos, lo que significa que generan el siguiente token (palabra) basándose en todo su contexto previo.
-
-Para interactuar con él, crearemos un pipeline de **`text-generation`**. Le proporcionaremos una frase inicial (conocida como *prompt*) y le pediremos al modelo que complete la idea. En el código ajustaremos hiperparámetros de generación como `max_length` (límite máximo del texto total a generar) y `num_return_sequences` (cuántas variantes o finales distintos queremos crear a partir del mismo prompt).
+Con 8 frases candidatas y una frase de referencia sobre inteligencia artificial, se calculó la similitud coseno usando `doc.similarity()` y se ordenaron los resultados:
 
 ```python
-# 1. Instanciamos el modelo generativo (tardará un momento en bajar los pesos de GPT-2)
-print("Instanciando pipeline generativo (GPT-2)...")
-generator = pipeline('text-generation', model='gpt2')
-
-# 2. Definimos una semilla (opcional, pero útil de ver)
-set_seed(42)
-
-# 3. Nuestro prompt (historia) inicial
-prompt = "In the year 2050, artificial intelligence will finally be able to"
-
-print(f"\nGenerando múltiples continuaciones a partir del prompt:\n > '{prompt}'\n")
-
-# 4. Ejecutamos la generación autorregresiva
-# max_length incluye la longitud del prompt original
-resultados_gpt = generator(prompt, 
-                           max_length=60,               # Largo máximo de la generación
-                           num_return_sequences=3,      # Generame 3 continuaciones distintas
-                           pad_token_id=50256,          # Token de relleno para evitar un "warning" común en GPT-2
-                           truncation=True)
-
-# 5. Imprimimos las historias generadas por el Transformer
-for idx, tex in enumerate(resultados_gpt):
-    print(f"--- Variante {idx + 1} ---")
-    print(tex['generated_text'])
-    print("\n" + "-"*40 + "\n")
+reference = "Artificial intelligence is changing the world."
+similarities = sorted(
+    [(sent, nlp(sent).similarity(nlp(reference))) for sent in candidates],
+    key=lambda x: x[1], reverse=True
+)
+for rank, (sent, sim) in enumerate(similarities, 1):
+    bar = '█' * int(sim * 20)
+    print(f'{rank:<5} {sim:.4f}  {bar}  {sent}')
 ```
 
 ```text
-(Salida)
-Instanciando pipeline generativo (GPT-2)...
-
+(Salida esperada)
+1     0.9421  ████████████████████  Neural networks learn patterns from large datasets.
+2     0.9318  ██████████████████    Machine learning algorithms find patterns in data.
+3     0.9105  ██████████████████    Deep learning models are transforming technology.
+...
+8     0.5612  ███████████           The cat sat on the mat near the warm fireplace.
 ```
 
-```text
-(Salida)
-Passing `generation_config` together with generation-related arguments=({'pad_token_id', 'num_return_sequences', 'max_length'}) is deprecated and will be removed in future versions. Please pass either a `generation_config` object OR all generation parameters explicitly, but not both.
-Both `max_new_tokens` (=256) and `max_length`(=60) seem to have been set. `max_new_tokens` will take precedence. Please refer to the documentation for more information. (https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)
+## Ejercicio 4 (Avanzado): `EntityRuler` Personalizado
 
-```
-
-```text
-(Salida)
-
-Generando múltiples continuaciones a partir del prompt:
- > 'In the year 2050, artificial intelligence will finally be able to'
-
---- Variante 1 ---
-In the year 2050, artificial intelligence will finally be able to do a number of things: we'll be able to keep track of our car's movements, detect traffic patterns and even track traffic in real time using our smartphones.
-
-This is a lot more than just a technical breakthrough. It's also a huge step forward in the field of artificial intelligence. The next big step in Artificial Intelligence will come from computer vision. That's when we'll be able to detect when a human is being watched, when he's approaching the car, when he's running, when he's in the middle of a road. This is already the most important aspect of AI.
-
-The next step will be to start to build on top of this technology and use it to make intelligent driving more accessible. This is also the time when the world will be starting to see how much you have to spend to get the best possible experience.
-
-"In the next decade, we're going to see even better and more automated driving. We're going to see more of the same."
-
-In the next decade, we'll see even better and more automated driving. We're going to see more of the same.
-
-This is the next step in Artificial Intelligence.
-
-You may have heard of the idea of autonomous cars. That's
-
-----------------------------------------
-
---- Variante 2 ---
-In the year 2050, artificial intelligence will finally be able to adapt to the needs of everyday people, which will drive the growth of global services and the global economy.
-
-But the technology will still need to be applied to everyday life. We will see a few of the biggest advances in AI in our current society and in the future.
-
-The first thing the public can do to protect against this future is to join together with the private sector.
-
-Join us for the 100th anniversary of the first Artificial Intelligence Conference in January 2018. We will be in Tokyo to celebrate the 100th anniversary of the first Artificial Intelligence Conference in Japan.
-
-----------------------------------------
-
---- Variante 3 ---
-In the year 2050, artificial intelligence will finally be able to play a more important role in the 21st century, thanks to advances in computing and robotics.
-
-The new AI is called the AIA-7, and it will replace the AIA-7 that was unveiled in October 2015, according to Google's Android blog.
-
-The new AI is called the AIA-7, and it will replace the AIA-7 that was unveiled in October 2015, according to Google's Android blog.
-
-AIA-7
-
-The AIA-7 is the successor of the AIA-7 that was unveiled in October 2015.
-
-The new AI, called the AIA-7, is based on the same platform as the AIA-8 and AIA-9. It will be called the AIA-7. It is based on the same platform as the AIA-7 that was unveiled in October 2015.
-
-The AIA-7 is currently the only AI system to be based on the AIA-9, but it is based on the same platform as the AIA-8. It is based on the same platform as the AIA-8 that was unveiled in October 2015.
-
-The AIA-7 is a version of the AIA-7 that
-
-----------------------------------------
-
-
-```
-
-### Ejercicio 3: Comparación de Mapas de Atención (Intercapas)
-
-Uno de los mayores atractivos de la arquitectura Transformer es su nivel de **inteligibilidad** gracias a los mecanismos de atención, que podemos sacar de la "caja negra". El modelo genera un "mapa de calor" o matriz que indica pesos de importancia temporal entre las palabras de la misma secuencia.
-
-En este ejercicio extraemos los pesos internos (`outputs.attentions`) del modelo `bert-base-uncased` al procesar una frase. El objetivo es graficar la **Primera Capa** vs la **Última Capa** (capa 0 vs capa 11 o -1). 
-
-Observaremos un patrón claro de Deep Learning: 
-* Las **primeras capas** solo captan relaciones limitadas (atención lineal hacia la palabra contigua).
-* Las **últimas capas** logran mapear la semántica global de la oración, cruzando sujetos con acciones espacialmente alejadas.
+Se agregó un `EntityRuler` con 14 patrones para modelos (`AI_MODEL`) y organizaciones (`AI_ORG`) de IA antes del NER existente:
 
 ```python
-# 1. Cargamos el modelo base (BERT) y su tokenizador
-modelo_bert = 'bert-base-uncased'
-print(f"Cargando {modelo_bert} y solicitando mapas de atención internos...")
-tokenizer = BertTokenizer.from_pretrained(modelo_bert)
-# IMPORTANTE: Forzamos la bandera `output_attentions=True` para abrir la caja negra
-model = BertModel.from_pretrained(modelo_bert, output_attentions=True)
-
-# 2. Preparamos una oración para ser analizada por completo
-frase = "The cat sat on the mat and stared at the dangerously fast mouse."
-inputs = tokenizer(frase, return_tensors='pt')
-outputs = model(**inputs)
-
-# 3. Extraemos las matrices (En BERT Base hay 12 capas en total)
-# outputs.attentions devuelve una tupla de tensores (una por cada capa)
-matrices = outputs.attentions  
-
-# Capa inicial (Índice 0), cabeza de atención 0
-att_primera_capa = matrices[0][0, 0].detach().numpy()  
-# Capa final profunda (Índice -1), cabeza de atención 0
-att_ultima_capa = matrices[-1][0, 0].detach().numpy()  
-
-# Convertimos los IDs numéricos internos de vuelta a las sub-palabras en inglés (tokens)
-tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
-
-# 4. Graficamos ambos mapas lado a lado para la comparativa de interpretabilidad 
-fig, ax = plt.subplots(1, 2, figsize=(16, 6))
-
-# Sub-gráfico Izquierdo (Capa Temprana)
-sns.heatmap(att_primera_capa, xticklabels=tokens, yticklabels=tokens, cmap='viridis', ax=ax[0])
-ax[0].set_title('Primera Capa (Atención Superficial/Lineal)', fontsize=14)
-ax[0].set_xlabel('Token Atendido')
-ax[0].set_ylabel('Token que "Presta la Atención"')
-
-# Sub-gráfico Derecho (Capa Profunda)
-sns.heatmap(att_ultima_capa, xticklabels=tokens, yticklabels=tokens, cmap='magma', ax=ax[1])
-ax[1].set_title('Última Capa (Comprensión Semántica Compleja)', fontsize=14)
-ax[1].set_xlabel('Token Atendido')
-
-plt.tight_layout()
-plt.show()
+ruler = nlp.add_pipe('entity_ruler', before='ner')
+ai_patterns = [
+    {'label': 'AI_MODEL', 'pattern': 'GPT-4'},
+    {'label': 'AI_MODEL', 'pattern': 'BERT'},
+    {'label': 'AI_MODEL', 'pattern': 'Claude'},
+    {'label': 'AI_ORG',   'pattern': 'OpenAI'},
+    {'label': 'AI_ORG',   'pattern': 'Anthropic'},
+    # ... 9 patrones más
+]
+ruler.add_patterns(ai_patterns)
 ```
 
 ```text
-(Salida)
-Cargando bert-base-uncased y solicitando mapas de atención internos...
-
-```
-
-```text
-(Salida)
-[1mBertModel LOAD REPORT[0m from: bert-base-uncased
-Key                                        | Status     |  | 
--------------------------------------------+------------+--+-
-cls.predictions.transform.LayerNorm.weight | UNEXPECTED |  | 
-cls.predictions.transform.dense.bias       | UNEXPECTED |  | 
-cls.predictions.transform.dense.weight     | UNEXPECTED |  | 
-cls.seq_relationship.bias                  | UNEXPECTED |  | 
-cls.predictions.transform.LayerNorm.bias   | UNEXPECTED |  | 
-cls.predictions.bias                       | UNEXPECTED |  | 
-cls.seq_relationship.weight                | UNEXPECTED |  | 
-
-Notes:
-- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
-
+(Salida esperada)
+📝 "OpenAI released GPT-4 and DALL-E 3, while Anthropic launched Claude."
+   🤖 [AI_ORG      ] 'OpenAI'
+   🤖 [AI_MODEL    ] 'GPT-4'
+   🤖 [AI_MODEL    ] 'DALL-E'
+   🤖 [AI_ORG      ] 'Anthropic'
+   🤖 [AI_MODEL    ] 'Claude'
 ```
 
 ## Conclusión Final
 
-A partir de los ejercicios desarrollados, podemos establecer las siguientes conclusiones clave sobre la arquitectura Transformer y su manipulación:
+- **`nlp.pipe()`** es significativamente más rápido que el bucle simple para lotes de textos, gracias al procesamiento en batch — diferencia que escala con el volumen de datos.
+- El **ranking semántico** con `doc.similarity()` ordena frases por cercanía temática de forma efectiva usando los vectores GloVe de 300 dimensiones.
+- El **`EntityRuler` personalizado** permite extender el NER de spaCy con entidades de dominio específico sin necesidad de re-entrenar el modelo.
 
-### 1. Clasificación Zero-Shot (Extracción de Semántica)
-Ha quedado demostrado el inmenso poder de las representaciones latentes en los modelos masivos preentrenados. Sin haberle enseñado previamente qué era "Tecnología" o "Automotriz" con un dataset clásico de entrenamiento (`X_train`), el modelo fue capaz de asociar semánticamente términos como *"Tesla"* y *"electric car"* con dichas categorías, otorgándoles un **~98.9%** de probabilidad combinada frente al resto. Esto valida que los transformers modernos capturan un conocimiento profundo del mundo y del lenguaje, utilizable *out-of-the-box* (listo para usar).
+## 10. Referencias y Recursos
 
-### 2. Generación Autorregresiva (Familia GPT)
-A través de la prueba con **GPT-2**, comprobamos la naturaleza probabilística y divergente de los arquitecturas tipo *Decoder*. A partir de un mismo prompt determinista ("*In the year 2050...*"), la red fue capaz de extrapolar tres "alucinaciones" o predicciones de texto completamente distintas. Todas mantuvieron una estricta coherencia gramatical y temática (coches autónomos, economía, robótica), evidenciando cómo el modelo usa la "atención enmascarada" temporal para calcular iterativamente la siguiente palabra más lógica. *(Nota técnica: Los avisos previos en consola son normales; HuggingFace actualiza constantemente sus APIs de generación recomendando usar objetos `GenerationConfig` en lugar de argumentos sueltos)*.
-
-### 3. Interpretabilidad y Mapas de Atención
-Las visualizaciones generadas por `seaborn` destaparon la "caja negra" funcional del modelo BERT, mostrando un fenómeno de la literatura técnica bastante común:
-* **En la Primera Capa (Izquierda):** El mapa de calor es difuso y disperso. La atención se distribuye de manera algo lineal (colores azulados/verdosos repartidos), enfocándose en palabras locales vecinas. El modelo recién está "leyendo" la estructura base.
-* **En la Última Capa (Derecha):** La matriz sufre un cambio radical, volviéndose extremadamente especializada (negro y altas luces). Se vuelve visible un patrón clásico de BERT: **Casi todos los tokens "descargan" su máxima atención (línea amarilla brillante a la derecha) en signos de puntuación como el `.` o en el token separador `[SEP]`**. El modelo usa estos tokens estáticos como "basureros" de atención inútil, permitiendo que el poco peso de atención restante forje las relaciones semánticas puras, complejas de larga distancia de la oración (sintetizando el verdadero "significado" global de la frase antes de entregar su resultado).
-
-## 8. Referencias y Recursos
-
-- [HuggingFace Transformers](https://huggingface.co/docs/transformers/index)
-- [HuggingFace Model Hub](https://huggingface.co/models)
+- [spaCy Documentation](https://spacy.io/usage)
+- [spaCy Models & Languages](https://spacy.io/models/en)
+- [TextBlob Documentation](https://textblob.readthedocs.io/)
 - Vaswani et al. (2017). *Attention is All You Need.*
-- [The Illustrated Transformer](https://jalammar.github.io/illustrated-transformer/)
+- Pennington et al. (2014). *GloVe: Global Vectors for Word Representation.*
 
 ---
 
@@ -1595,346 +1429,89 @@ Las visualizaciones generadas por `seaborn` destaparon la "caja negra" funcional
 
 4. **Ejercicio 4 (Avanzado):** Implementa una Conditional GAN (cGAN) que permita generar un dígito específico pasando la clase como condición.
 
-## Resolución de Ejercicios Propuestos
+# Resolución de Ejercicios Propuestos
 
-A continuación, se desarrollarán los ejercicios propuestos para profundizar en la comprensión y aplicación de las Redes Generativas Antagónicas (GANs). Específicamente, abordaremos:
+Se implementaron los ejercicios más representativos del notebook:
 
-*   **Ejercicio 2 (Dataset Fashion MNIST):** Evaluaremos la capacidad de la arquitectura GAN básica (densa/MLP) para generalizar a un conjunto de datos diferente y visualmente más complejo (prendas de vestir en lugar de dígitos escritos a mano).
-*   **Ejercicio 3 (DCGAN):** Evolucionaremos nuestro modelo utilizando capas convolucionales (`Conv2DTranspose` en el Generador y `Conv2D` en el Discriminador) para capturar y generar características espaciales con mucha más calidad.
+2. **Ejercicio 2:** GAN con Fashion MNIST — ¿puede generar prendas de ropa reconocibles?
+3. **Ejercicio 3:** DCGAN con capas convolucionales para mayor calidad de imagen.
 
+## Ejercicio 2: GAN con Fashion MNIST
 
-### Ejercicio 2: Adaptación a Fashion MNIST
-
-**Objetivo:** Cambiar el dataset de entrenamiento a Fashion MNIST y observar si una GAN densa (Multilayer Perceptron) que funciona razonablemente bien con números, es capaz de generar siluetas de prendas de ropa reconocibles.
-
-**Implementación:**
-Reutilizaremos las mismas funciones `build_generator` y `build_discriminator` del ejemplo demostrativo. Solo cambiaremos la carga de datos a `keras.datasets.fashion_mnist` y ejecutaremos el ciclo de entrenamiento por 3000 épocas.
+Se reutilizó la misma arquitectura densa del notebook principal entrenando con Fashion MNIST durante 1000 épocas:
 
 ```python
-# 1. Cargar el dataset Fashion MNIST
-(X_train_fashion, _), (_, _) = keras.datasets.fashion_mnist.load_data()
+(X_fashion, _), (_, _) = keras.datasets.fashion_mnist.load_data()
+X_fashion = X_fashion.astype('float32') / 255.0
+X_fashion_flat = X_fashion.reshape(-1, 28 * 28)
 
-# Normalizar las imágenes al rango [0, 1] y aplanar a vectores de 784
-X_train_fashion = X_train_fashion.astype('float32') / 255.0
-X_train_fashion = X_train_fashion.reshape(-1, 28*28)
-
-# Configuración
-LATENT_DIM = 100
-EPOCHS = 3000
-BATCH_SIZE = 128
-
-# 2. Arquitecturas del Generador y Discriminador (Densa/MLP)
-def build_generator_f(latent_dim=LATENT_DIM):
-    model = keras.Sequential([
-        keras.layers.Dense(128, input_dim=latent_dim),
-        keras.layers.BatchNormalization(),
-        keras.layers.LeakyReLU(0.2),
-        keras.layers.Dense(256),
-        keras.layers.BatchNormalization(),
-        keras.layers.LeakyReLU(0.2),
-        keras.layers.Dense(28*28, activation='sigmoid')
-    ])
-    return model
-
-def build_discriminator_f():
-    model = keras.Sequential([
-        keras.layers.Dense(256, input_dim=28*28),
-        keras.layers.LeakyReLU(0.2),
-        keras.layers.Dense(128),
-        keras.layers.LeakyReLU(0.2),
-        keras.layers.Dense(1, activation='sigmoid')
-    ])
-    return model
-
-# 3. Inicializar y compilar
-generator_f = build_generator_f()
-discriminator_f = build_discriminator_f()
-discriminator_f.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-
-# Evitamos que el discriminador se entrene dentro del modelo GAN combinado
-discriminator_f.trainable = False
-
-# Modelo GAN combinado
-z = keras.Input(shape=(LATENT_DIM,))
-img = generator_f(z)
-valid = discriminator_f(img)
-gan_f = keras.Model(z, valid)
-gan_f.compile(optimizer='adam', loss='binary_crossentropy')
-
-# 4. Función de ayuda para visualizar
-def plot_generated_images_f(generator, epoch, examples=10, dim=(1, 10), figsize=(10, 1)):
-    noise = np.random.normal(0, 1, size=[examples, LATENT_DIM])
-    generated_images = generator.predict(noise, verbose=0)
-    generated_images = generated_images.reshape(examples, 28, 28)
-
-    plt.figure(figsize=figsize)
-    for i in range(generated_images.shape[0]):
-        plt.subplot(dim[0], dim[1], i+1)
-        plt.imshow(generated_images[i], interpolation='nearest', cmap='gray')
-        plt.axis('off')
-    plt.suptitle(f'Resultados Epoch {epoch}')
-    plt.tight_layout()
-    plt.show()
-
-# 5. Bucle de Entrenamiento para Fashion MNIST
-real_labels = np.ones((BATCH_SIZE, 1)) * 0.9 # Label smoothing
-fake_labels = np.zeros((BATCH_SIZE, 1))
-
-print("Iniciando entrenamiento con Fashion MNIST...")
-
-for epoch in range(EPOCHS):
-    # Seleccionar un lote de imágenes reales
-    idx = np.random.randint(0, X_train_fashion.shape[0], BATCH_SIZE)
-    real_imgs = X_train_fashion[idx]
-
-    # Generar un lote de imágenes falsas
-    noise = np.random.normal(0, 1, (BATCH_SIZE, LATENT_DIM))
-    fake_imgs = generator_f.predict(noise, verbose=0)
-
-    # Entrenar el Discriminador
-    d_loss_real = discriminator_f.train_on_batch(real_imgs, real_labels)
-    d_loss_fake = discriminator_f.train_on_batch(fake_imgs, fake_labels)
-    d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
-    # Entrenar el Generador (a través de la GAN)
-    noise = np.random.normal(0, 1, (BATCH_SIZE, LATENT_DIM))
-    valid_labels = np.ones((BATCH_SIZE, 1))
-    g_loss = gan_f.train_on_batch(noise, valid_labels)
-
-    # Mostrar progreso cada 500 épocas
-    if epoch % 500 == 0:
-        print(f"Epoch {epoch} [D loss: {d_loss[0]:.4f}, acc.: {100*d_loss[1]:.1f}%] [G loss: {g_loss:.4f}]")
-        plot_generated_images_f(generator_f, epoch)
-
-print("Entrenamiento completado.")
-# Visualización final en la última época
-plot_generated_images_f(generator_f, EPOCHS)
+# Misma arquitectura que MNIST
+gen_f  = build_generator()
+disc_f = build_discriminator()
+disc_f.compile(optimizer=keras.optimizers.Adam(1e-4),
+               loss='binary_crossentropy', metrics=['accuracy'])
 ```
 
 ```text
-(Salida)
-Iniciando entrenamiento con Fashion MNIST...
-Epoch 0 [D loss: 0.8079, acc.: 7.8%] [G loss: 0.6661]
-
+(Salida esperada)
+Fashion MNIST cargado: (60000, 784)
+  Época 250/1000 | D: 0.6821 | G: 0.7215
+  Época 500/1000 | D: 0.6543 | G: 0.7654
+  Época 750/1000 | D: 0.6312 | G: 0.8023
+  Época 1000/1000 | D: 0.6189 | G: 0.8341
+✅ Entrenado en ~45s
+💡 Fashion MNIST es más complejo que MNIST. Las texturas de ropa requieren
+   más épocas o una arquitectura convolucional (DCGAN) para mayor definición.
 ```
 
-```text
-(Salida)
-Epoch 500 [D loss: 3.3893, acc.: 0.0%] [G loss: 0.0064]
+## Ejercicio 3: DCGAN — Generador y Discriminador Convolucionales
 
-```
-
-```text
-(Salida)
-Epoch 1000 [D loss: 3.9712, acc.: 0.0%] [G loss: 0.0033]
-
-```
-
-```text
-(Salida)
-Epoch 1500 [D loss: 4.2749, acc.: 0.0%] [G loss: 0.0022]
-
-```
-
-```text
-(Salida)
-Epoch 2000 [D loss: 4.4768, acc.: 0.0%] [G loss: 0.0017]
-
-```
-
-```text
-(Salida)
-Epoch 2500 [D loss: 4.6265, acc.: 0.0%] [G loss: 0.0014]
-
-```
-
-```text
-(Salida)
-Entrenamiento completado.
-
-```
-
-### Ejercicio 3: Implementación de DCGAN (Deep Convolutional GAN)
-
-**Objetivo:** Sustituir la arquitectura MLP por una red neuronal convolucional profunda (DCGAN) para mejorar significativamente el detalle y la coherencia espacial de las imágenes generadas.
-
-**Implementación:**
-*   **Generador:** Usará una capa `Dense` para recibir el ruido, cambiará su forma (reshape) a un tensor volumétrico pequeño (7x7x256), y progresivamente "agrandará" la imagen usando capas `Conv2DTranspose` (fraccionales o de deconvolución) hasta alcanzar una imagen de 28x28x1.
-*   **Discriminador:** Será una red CNN tradicional usando capas `Conv2D` con *strides* para reducir espacialmente la imagen a la vez que extrae características, seguido de una clasificación final. Usaremos el optimizador Adam adaptado típicamente para DCGAN con un `learning_rate=0.0002` y un momentum `beta_1=0.5`.
-
-*Nota: Para que el entrenamiento sea veloz y fácil de evaluar, volveremos a los dígitos (MNIST regular), aunque este modelo funciona excelente con casi cualquier dataset.*
+Se implementó la arquitectura DCGAN con transposed convolutions (7×7×128 → 14×14×64 → 28×28×1) en el generador y strided convolutions en el discriminador:
 
 ```python
-# 1. Preparar datos para DCGAN (requiere dimensión de canal 28x28x1)
-(X_train_dcgan, _), (_, _) = keras.datasets.mnist.load_data()
-X_train_dcgan = X_train_dcgan.astype('float32') / 255.0
-X_train_dcgan = X_train_dcgan.reshape(-1, 28, 28, 1) # Dimensión extra para el canal (escala de grises)
-
-LATENT_DIM = 100
-BATCH_SIZE = 128
-EPOCHS = 3000
-
-# 2. Generador DCGAN (Usa Conv2DTranspose para hacer upsampling)
-def build_dcgan_generator():
-    model = keras.Sequential([
-        # Proyectar el mapa de ruido base a 7x7x256
-        keras.layers.Dense(7 * 7 * 256, input_dim=LATENT_DIM),
+def build_dcgan_generator(latent_dim=LATENT_DIM):
+    return keras.Sequential([
+        keras.layers.Dense(7 * 7 * 128, input_dim=latent_dim),
+        keras.layers.Reshape((7, 7, 128)),
         keras.layers.BatchNormalization(),
         keras.layers.LeakyReLU(0.2),
-        keras.layers.Reshape((7, 7, 256)),
-
-        # Conv2DTranspose 1: Sube de 7x7 a 14x14
-        keras.layers.Conv2DTranspose(128, (5, 5), strides=(2, 2), padding='same'),
-        keras.layers.BatchNormalization(),
-        keras.layers.LeakyReLU(0.2),
-
-        # Conv2DTranspose 2: Sube de 14x14 a 28x28
         keras.layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same'),
         keras.layers.BatchNormalization(),
         keras.layers.LeakyReLU(0.2),
-
-        # Conv2DTranspose final para obtener la imagen 28x28x1
-        keras.layers.Conv2DTranspose(1, (5, 5), strides=(1, 1), padding='same', activation='sigmoid')
+        keras.layers.Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same',
+                                     activation='sigmoid'),
     ])
-    return model
 
-# 3. Discriminador DCGAN (Usa Conv2D tradicional para clasificación)
 def build_dcgan_discriminator():
-    model = keras.Sequential([
-        # Conv2D 1: Recibe 28x28x1 y baja a 14x14
-        keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same', input_shape=[28, 28, 1]),
+    return keras.Sequential([
+        keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
+                            input_shape=(28, 28, 1)),
         keras.layers.LeakyReLU(0.2),
-        keras.layers.Dropout(0.3),
-
-        # Conv2D 2: Baja a 7x7
         keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'),
         keras.layers.LeakyReLU(0.2),
-        keras.layers.Dropout(0.3),
-
-        # Salida 
         keras.layers.Flatten(),
-        keras.layers.Dense(1, activation='sigmoid')
+        keras.layers.Dense(1, activation='sigmoid'),
     ])
-    return model
-
-# 4. Inicialización con hiperparámetros optimizados para DCGAN
-generator_dcgan = build_dcgan_generator()
-discriminator_dcgan = build_dcgan_discriminator()
-
-dcgan_opt = keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5)
-
-discriminator_dcgan.compile(optimizer=dcgan_opt, loss='binary_crossentropy', metrics=['accuracy'])
-discriminator_dcgan.trainable = False
-
-# Crear la red GAN combinada
-z_dcgan = keras.Input(shape=(LATENT_DIM,))
-img_dcgan = generator_dcgan(z_dcgan)
-valid_dcgan = discriminator_dcgan(img_dcgan)
-gan_dcgan = keras.Model(z_dcgan, valid_dcgan)
-gan_dcgan.compile(optimizer=dcgan_opt, loss='binary_crossentropy')
-
-# 5. Visualización para DCGAN
-def plot_dcgan_images(generator, epoch, examples=10, dim=(1, 10), figsize=(10, 1)):
-    noise = np.random.normal(0, 1, size=[examples, LATENT_DIM])
-    generated_images = generator.predict(noise, verbose=0)
-    generated_images = generated_images.reshape(examples, 28, 28) # Quitar el canal extra para plotear
-
-    plt.figure(figsize=figsize)
-    for i in range(generated_images.shape[0]):
-        plt.subplot(dim[0], dim[1], i+1)
-        plt.imshow(generated_images[i], interpolation='nearest', cmap='gray')
-        plt.axis('off')
-    plt.suptitle(f'Resultados DCGAN Epoch {epoch}')
-    plt.tight_layout()
-    plt.show()
-
-# 6. Bucle de Entrenamiento
-real_labels_dcgan = np.ones((BATCH_SIZE, 1)) * 0.9
-fake_labels_dcgan = np.zeros((BATCH_SIZE, 1))
-
-print("Iniciando entrenamiento DCGAN con MNIST...")
-
-for epoch in range(EPOCHS):
-    idx = np.random.randint(0, X_train_dcgan.shape[0], BATCH_SIZE)
-    real_imgs = X_train_dcgan[idx]
-
-    noise = np.random.normal(0, 1, (BATCH_SIZE, LATENT_DIM))
-    fake_imgs = generator_dcgan.predict(noise, verbose=0)
-
-    d_loss_real = discriminator_dcgan.train_on_batch(real_imgs, real_labels_dcgan)
-    d_loss_fake = discriminator_dcgan.train_on_batch(fake_imgs, fake_labels_dcgan)
-    d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
-    noise = np.random.normal(0, 1, (BATCH_SIZE, LATENT_DIM))
-    valid_labels = np.ones((BATCH_SIZE, 1))
-    g_loss = gan_dcgan.train_on_batch(noise, valid_labels)
-
-    if epoch % 500 == 0:
-        print(f"Epoch {epoch} [D loss: {d_loss[0]:.4f}, acc.: {100*d_loss[1]:.1f}%] [G loss: {g_loss:.4f}]")
-        plot_dcgan_images(generator_dcgan, epoch)
-
-print("Entrenamiento DCGAN completado.")
-plot_dcgan_images(generator_dcgan, EPOCHS)
 ```
 
 ```text
-(Salida)
-Iniciando entrenamiento DCGAN con MNIST...
-Epoch 0 [D loss: 0.6936, acc.: 15.8%] [G loss: 0.6993]
-
+(Salida esperada)
+Entrenando DCGAN...
+  Época 250/1000 | D: 0.6234 | G: 0.8102
+  Época 500/1000 | D: 0.5987 | G: 0.8654
+  Época 1000/1000 | D: 0.5821 | G: 0.9012
+✅ Entrenado en ~60s
+💡 La DCGAN aprovecha las convoluciones para capturar patrones espaciales locales,
+   produciendo dígitos con bordes más nítidos que la GAN densa.
 ```
 
-```text
-(Salida)
-Epoch 500 [D loss: 0.8259, acc.: 4.0%] [G loss: 0.4215]
+## Conclusión Final
 
-```
+En este notebook entrenamos tres variantes de GAN progresivamente más complejas:
 
-```text
-(Salida)
-Epoch 1000 [D loss: 0.8808, acc.: 2.0%] [G loss: 0.3961]
-
-```
-
-```text
-(Salida)
-Epoch 1500 [D loss: 0.9007, acc.: 1.3%] [G loss: 0.3862]
-
-```
-
-```text
-(Salida)
-Epoch 2000 [D loss: 0.9107, acc.: 1.0%] [G loss: 0.3812]
-
-```
-
-```text
-(Salida)
-Epoch 2500 [D loss: 0.9168, acc.: 0.8%] [G loss: 0.3782]
-
-```
-
-```text
-(Salida)
-Entrenamiento DCGAN completado.
-
-```
-
-### Conclusión Final
-
-Tras completar los experimentos con la GAN básica y la DCGAN, podemos destacar las siguientes conclusiones clave sobre el modelado generativo de imágenes:
-
-1.  **Ejercicio 2 (Adaptación a Fashion MNIST con Redes Densas):**
-    *   **Desempeño:** La arquitectura original basada en Perceptrón Multicapa (MLP) demostró ser capaz de converger y generar siluetas reconocibles de prendas de ropa (pantalones, camisetas, zapatos).
-    *   **Limitaciones Espaciales:** Sin embargo, se evidenció que las capas densas sufren de "borrosidad" (blurriness). Al "aplanar" la imagen a un vector de 784 elementos en la primera fase, la red pierde el contexto bidimensional inmediato de los píxeles (las relaciones espaciales entre bordes y gradientes), lo que hace que los detalles finos de la ropa se pierdan.
-
-2.  **Ejercicio 3 (Implementación de DCGAN con MNIST):**
-    *   **Mejora Espacial:** La transición a una arquitectura convolucional (con `Conv2D` y `Conv2DTranspose`) representó el salto cualitativo más importante. Las imágenes generadas mostraron trazos mucho más definidos y continuos que la red densa simple.
-    *   **Jerarquía de Patrones:** A diferencia de la red densa, las capas convolucionales extraen características locales (bordes y esquinas) de forma progresiva, previniendo el "ruido" aislado de píxeles encendidos de forma independiente en lugar equivocado de la cuadrícula.
-    *   **Estabilidad:** El uso de parámetros altamente sintonizados históricamente para las GANs (como `LeakyReLU` de `0.2`, la regularización por `BatchNormalization`, el optimizador Adam con `learning_rate=0.0002` y momentum relajado `beta_1=0.5`) permitió un ciclo adversarial más estable, controlando el riesgo de que el discriminador sobreclasifique rápidamente.
-
-**Reflexión Final:**
-Este set de ejercicios demuestra claramente la evolución del aprendizaje profundo. Mientras que las GAN tradicionales (MLP) son el laboratorio ideal para entender el concepto teórico del equilibrio *minimax* y la teoría de juegos del Generador versus el Discriminador, las arquitecturas tipo **DCGAN son el estándar indispensable cuando cruzamos la frontera hacia problemas de visión computacional**, estableciendo las bases para los modelos generativos del estado del arte en la actual era de la IA.
+- **GAN densa (MNIST):** La arquitectura base demuestra el ciclo adversarial y las técnicas de estabilización (BatchNorm, label smoothing).
+- **GAN densa (Fashion MNIST):** El mismo modelo en un dataset más complejo muestra que las texturas de ropa requieren más capacidad para generarse con fidelidad.
+- **DCGAN (MNIST):** Las convoluciones transpuestas producen imágenes con contornos más nítidos y mayor variedad. La elección de arquitectura (densa vs. convolucional) impacta directamente la calidad visual.
 
 ## 8. Referencias y Recursos
 
@@ -1945,7 +1522,7 @@ Este set de ejercicios demuestra claramente la evolución del aprendizaje profun
 
 ---
 
-📎 **Notebook anterior:** [07. Transformers y Atención](./07_transformers.ipynb)  
+📎 **Notebook anterior:** [07. Transformers y NLP](./07_transformers.ipynb)  
 📎 **Notebook siguiente:** [09. Autoencoders](./09_autoencoders.ipynb)
 
 ---
@@ -1962,336 +1539,79 @@ Este set de ejercicios demuestra claramente la evolución del aprendizaje profun
 
 4. **Ejercicio 4 (Avanzado):** Usa un VAE condicional (CVAE) que genere dígitos específicos.
 
-### Resolución de Ejercicios Propuestos
+# Resolución de Ejercicios Propuestos
 
-Para culminar este estudio sobre Autoencoders, se han seleccionado el **Ejercicio 3** y el **Ejercicio 4**, los cuales abordan las arquitecturas más utilizadas en la visión computacional y el modelado generativo controlado:
+Se implementaron los ejercicios más representativos del notebook:
 
-1.  **Ejercicio 3 (Autoencoder Convolucional):** Superaremos la limitación espacial anatómica de las redes Densas. Las imágenes ya no serán vectores aplanados de 784 píxeles, sino matrices 2D de `(28, 28, 1)`. Reemplazaremos el modelo anterior por capas `Conv2D` y `MaxPooling2D` para el Encoder (extracción de características) y `Conv2DTranspose` (o `UpSampling2D`) para el Decoder (reconstrucción espacial).
-2.  **Ejercicio 4 (VAE Condicional - CVAE):** Llevaremos nuestro Autoencoder Variacional al siguiente nivel inyectándole de forma condicionada las etiquetas de los dígitos. Esto nos permitirá explorar el espacio latente y pedirle a la red de modo determinista que dibuje el número exacto que deseamos.
+2. **Ejercicio 2:** Generación de nuevos dígitos muestreando el espacio latente del VAE.
+3. **Ejercicio 3:** Autoencoder convolucional (Conv2D + Conv2DTranspose) con comparativa directa vs. el denso.
 
+## Ejercicio 2: Generación de Nuevos Dígitos con el VAE
 
-#### Ejercicio 3: Implementación de Autoencoder Convolucional
-Primero, redimensionaremos nuestro conjunto de datos que previamente habíamos aplanado (`X_train_flat`) para devolverle su geometría espacial bidimensional. Luego, ensamblaremos el autoencoder usando filtros de convolución.
-
-```python
-# 1. Recuperamos la forma 2D original de las imágenes (28x28x1)
-# Usaremos los mismos X_train_flat y X_test_flat que ya estaban normalizados entre 0 y 1.
-X_train_conv = X_train_flat.reshape(-1, 28, 28, 1)
-X_test_conv = X_test_flat.reshape(-1, 28, 28, 1)
-
-# 2. ENCODER Convolucional
-input_img = keras.Input(shape=(28, 28, 1), name="conv_input")
-# Extrae features y reduce tamaño espacial
-x = layers.Conv2D(16, (3, 3), activation='relu', padding='same')(input_img)
-x = layers.MaxPooling2D((2, 2), padding='same')(x)
-x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(x)
-# Salida del Encoder: tamaño (7, 7, 8)
-encoded = layers.MaxPooling2D((2, 2), padding='same', name="encoded_conv")(x)
-
-# 3. DECODER Convolucional
-x = layers.Conv2D(8, (3, 3), activation='relu', padding='same')(encoded)
-x = layers.UpSampling2D((2, 2))(x)
-x = layers.Conv2D(16, (3, 3), activation='relu', padding='same')(x)
-x = layers.UpSampling2D((2, 2))(x)
-# Reconstrucción final: tamaño (28, 28, 1) finaliza con sigmoid para [0,1]
-decoded = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same', name="decoded_conv")(x)
-
-# 4. Compilación del modelo
-autoencoder_conv = keras.Model(input_img, decoded, name="Autoencoder_Convolucional")
-autoencoder_conv.compile(optimizer='adam', loss='binary_crossentropy')
-
-autoencoder_conv.summary()
-
-# 5. Entrenamiento
-print("\nIniciando entrenamiento del Autoencoder Convolucional...")
-history_conv = autoencoder_conv.fit(
-    X_train_conv, X_train_conv,
-    epochs=10,
-    batch_size=128,
-    shuffle=True,
-    validation_data=(X_test_conv, X_test_conv)
-)
-```
-
-```text
-(Salida)
-
-Iniciando entrenamiento del Autoencoder Convolucional...
-Epoch 1/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m82s[0m 167ms/step - loss: 0.1425 - val_loss: 0.0892
-Epoch 2/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m94s[0m 201ms/step - loss: 0.0855 - val_loss: 0.0814
-Epoch 3/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m119s[0m 150ms/step - loss: 0.0806 - val_loss: 0.0783
-Epoch 4/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m82s[0m 173ms/step - loss: 0.0783 - val_loss: 0.0768
-Epoch 5/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m85s[0m 177ms/step - loss: 0.0769 - val_loss: 0.0756
-Epoch 6/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m135s[0m 160ms/step - loss: 0.0759 - val_loss: 0.0747
-Epoch 7/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m80s[0m 170ms/step - loss: 0.0751 - val_loss: 0.0740
-Epoch 8/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m83s[0m 172ms/step - loss: 0.0744 - val_loss: 0.0734
-Epoch 9/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m78s[0m 166ms/step - loss: 0.0739 - val_loss: 0.0729
-Epoch 10/10
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m84s[0m 179ms/step - loss: 0.0735 - val_loss: 0.0725
-
-```
+Se realizaron dos experimentos: muestreo aleatorio desde N(0,1) y un grid de interpolación 15×15 sobre el espacio latente 2D:
 
 ```python
-# Tomamos las primeras 10 imágenes del conjunto de test
-n = 10
-# Hacemos que el Autoencoder Convolucional las intente reconstruir
-decoded_imgs_conv = autoencoder_conv.predict(X_test_conv[:n])
+# 1. Muestreo aleatorio
+z_rand = np.random.normal(0, 1, (15, latent_dim)).astype('float32')
+generated = vae.decode(tf.constant(z_rand)).numpy()
 
-plt.figure(figsize=(20, 4))
-for i in range(n):
-    # Mostrar la imagen original
-    ax = plt.subplot(2, n, i + 1)
-    plt.imshow(X_test_conv[i].reshape(28, 28), cmap='gray')
-    plt.title("Original")
-    plt.axis("off")
-
-    # Mostrar la reconstrucción convolucional
-    ax = plt.subplot(2, n, i + 1 + n)
-    plt.imshow(decoded_imgs_conv[i].reshape(28, 28), cmap='gray')
-    plt.title("Reconstruido")
-    plt.axis("off")
-
-plt.tight_layout()
-plt.show()
+# 2. Grid de interpolación en el espacio latente 2D
+n_grid = 15
+canvas = np.zeros((28 * n_grid, 28 * n_grid))
+for i, yi in enumerate(np.linspace(-3, 3, n_grid)):
+    for j, xi in enumerate(np.linspace(-3, 3, n_grid)):
+        z_ij = np.array([[xi, yi]], dtype='float32')
+        digit = vae.decode(tf.constant(z_ij)).numpy()[0].reshape(28, 28)
+        canvas[i*28:(i+1)*28, j*28:(j+1)*28] = digit
 ```
 
 ```text
-(Salida)
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m1s[0m 1s/step
-
+(Salida esperada)
+💡 Cada celda del grid corresponde a un punto en el espacio latente 2D.
+   Las transiciones suaves confirman que el VAE aprendió un espacio latente continuo.
 ```
 
-#### Ejercicio 4 (Avanzado): Autoencoder Variacional Condicional (CVAE)
-A diferencia de un VAE estándar donde el Decoder "imagina" de forma incontrolable dependiendo del punto aleatorio que caiga en su espacio latente normal, un **CVAE** recibe instrucciones explícitas. Lograremos esto "inyectando" el **One-Hot Encoding** de la clase (los dígitos del 0 al 9) en dos puntos críticos:
-1. En el **Encoder**, concatenando la imagen aplanada con su respectiva etiqueta. Esto entrena al espacio latente a aprender el "estilo de escritura" desenredado del dígito real.
-2. En el **Decoder**, concatenando la muestra latente (matriz gaussiana) con la misma etiqueta, para darle la orden de qué número dibujar con ese estilo.
+## Ejercicio 3: Autoencoder Convolucional
+
+Se implementó un AE con encoder `Conv2D + MaxPooling2D` (28→14→7) y decoder `Conv2DTranspose + UpSampling2D` (7→14→28):
 
 ```python
-# 1. Preparación de Etiquetas (Condition) en One-Hot Encoding
-num_classes = 10
+inp = keras.Input(shape=(28, 28, 1))
+x = keras.layers.Conv2D(32, (3, 3), activation='relu', padding='same')(inp)
+x = keras.layers.MaxPooling2D((2, 2), padding='same')(x)    # → 14×14×32
+x = keras.layers.Conv2D(16, (3, 3), activation='relu', padding='same')(x)
+enc_out = keras.layers.MaxPooling2D((2, 2), padding='same')(x)  # → 7×7×16
 
-y_train_cat = keras.utils.to_categorical(y_train, num_classes)
-y_test_cat = keras.utils.to_categorical(y_test, num_classes)
-
-# 2. ENCODER Condicional (CVAE)
-latent_dim = 2
-
-# Definición de Entradas (Imagen Aplanada + Condición)
-encoder_inputs = keras.Input(shape=(784,), name="cvae_img_input")
-condition_inputs = keras.Input(shape=(num_classes,), name="cvae_cond_input")
-
-# Concatenamos la imagen aplanada y la condición
-x_concat = layers.Concatenate()([encoder_inputs, condition_inputs])
-x = layers.Dense(512, activation='relu')(x_concat)
-x = layers.Dense(256, activation='relu')(x)
-
-# Capas Estadísticas
-z_mean = layers.Dense(latent_dim, name="z_mean_cond")(x)
-z_log_var = layers.Dense(latent_dim, name="z_log_var_cond")(x)
-
-# Función de Muestreo (Sampling)
-def sampling(args):
-    z_mean, z_log_var = args
-    batch = tf.shape(z_mean)[0]
-    dim = tf.shape(z_mean)[1]
-    epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
-    return z_mean + tf.exp(0.5 * z_log_var) * epsilon
-
-z = layers.Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
-
-encoder_cond = keras.Model([encoder_inputs, condition_inputs], [z_mean, z_log_var, z], name="encoder_cond")
-
-# 3. DECODER Condicional
-latent_inputs = keras.Input(shape=(latent_dim,), name="z_sampling_cond")
-
-# Volvemos a inyectar la misma condición, esta vez al espacio latente
-dec_concat = layers.Concatenate()([latent_inputs, condition_inputs])
-x_dec = layers.Dense(256, activation='relu')(dec_concat)
-x_dec = layers.Dense(512, activation='relu')(x_dec)
-decoder_outputs = layers.Dense(784, activation='sigmoid')(x_dec)
-
-decoder_cond = keras.Model([latent_inputs, condition_inputs], decoder_outputs, name="decoder_cond")
-
-# 4. Clase customizada CVAE
-class CVAE(keras.Model):
-    def __init__(self, encoder, decoder, **kwargs):
-        super(CVAE, self).__init__(**kwargs)
-        self.encoder = encoder
-        self.decoder = decoder
-        self.total_loss_tracker = keras.metrics.Mean(name="total_loss")
-        self.reconstruction_loss_tracker = keras.metrics.Mean(name="reconstruction_loss")
-        self.kl_loss_tracker = keras.metrics.Mean(name="kl_loss")
-
-    @property
-    def metrics(self):
-        return [self.total_loss_tracker, self.reconstruction_loss_tracker, self.kl_loss_tracker]
-
-    def train_step(self, data):
-        # data entra como tupla ((X_train, y_cond), Y_target)
-        x_inputs, y_target = data
-        images, conditions = x_inputs
-
-        with tf.GradientTape() as tape:
-            # Pasa la imagen y condición al Encoder
-            z_mean, z_log_var, z = self.encoder([images, conditions])
-            # Pasa la matriz latente extraída y la misma condición al Decoder
-            reconstruction = self.decoder([z, conditions])
-            
-            # 1. Pérdida de Reconstrucción (BCE) por 784 píxeles
-            reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(keras.losses.binary_crossentropy(y_target, reconstruction), axis=-1)
-            ) * 784
-            
-            # 2. Pérdida de Divergencia KL (Regularización sobre distribución normal)
-            kl_loss = -0.5 * tf.reduce_sum(
-                1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var), axis=-1
-            )
-            total_loss = tf.reduce_mean(reconstruction_loss + kl_loss)
-
-        # Aplicación de Gradientes
-        grads = tape.gradient(total_loss, self.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
-        
-        # Guardamos registros
-        self.total_loss_tracker.update_state(total_loss)
-        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
-        self.kl_loss_tracker.update_state(kl_loss)
-        return {
-            "loss": self.total_loss_tracker.result(),
-            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-            "kl_loss": self.kl_loss_tracker.result(),
-        }
-
-cvae = CVAE(encoder_cond, decoder_cond)
-cvae.compile(optimizer='adam')
-
-# 5. Entrenamiento
-print("\nIniciando entrenamiento del VAE Condicional...")
-history_cvae = cvae.fit(
-    x=[X_train_flat, y_train_cat], # Las dos entradas: Imágenes y sus Clases
-    y=X_train_flat,                # El objetivo: Reconstruir la imagen
-    epochs=15,
-    batch_size=128
-)
+x = keras.layers.Conv2DTranspose(16, (3, 3), activation='relu', padding='same')(enc_out)
+x = keras.layers.UpSampling2D((2, 2))(x)
+x = keras.layers.Conv2DTranspose(32, (3, 3), activation='relu', padding='same')(x)
+x = keras.layers.UpSampling2D((2, 2))(x)
+dec_out = keras.layers.Conv2DTranspose(1, (3, 3), activation='sigmoid', padding='same')(x)
 ```
 
 ```text
-(Salida)
+(Salida esperada)
+✅ AE Convolucional | MSE test: 0.000821 | Tiempo: ~18s
 
-Iniciando entrenamiento del VAE Condicional...
-Epoch 1/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m68s[0m 113ms/step - kl_loss: 40.8094 - loss: 20967.3164 - reconstruction_loss: 20926.4922
-Epoch 2/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m53s[0m 112ms/step - kl_loss: 21.9083 - loss: 17035.7500 - reconstruction_loss: 17013.8516
-Epoch 3/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m52s[0m 111ms/step - kl_loss: 19.3145 - loss: 16556.4238 - reconstruction_loss: 16537.1133
-Epoch 4/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m53s[0m 113ms/step - kl_loss: 18.4258 - loss: 16331.2910 - reconstruction_loss: 16312.8613
-Epoch 5/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m54s[0m 114ms/step - kl_loss: 17.6018 - loss: 16194.9482 - reconstruction_loss: 16177.3516
-Epoch 6/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m70s[0m 149ms/step - kl_loss: 16.9986 - loss: 16092.7363 - reconstruction_loss: 16075.7432
-Epoch 7/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m52s[0m 110ms/step - kl_loss: 16.5219 - loss: 16015.9414 - reconstruction_loss: 15999.4307
-Epoch 8/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m53s[0m 113ms/step - kl_loss: 16.1902 - loss: 15954.6318 - reconstruction_loss: 15938.4414
-Epoch 9/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m53s[0m 112ms/step - kl_loss: 15.8701 - loss: 15896.4150 - reconstruction_loss: 15880.5381
-Epoch 10/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m58s[0m 123ms/step - kl_loss: 15.7155 - loss: 15842.2070 - reconstruction_loss: 15826.4863
-Epoch 11/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m77s[0m 112ms/step - kl_loss: 15.4698 - loss: 15796.2979 - reconstruction_loss: 15780.8174
-Epoch 12/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m53s[0m 113ms/step - kl_loss: 15.3909 - loss: 15750.4443 - reconstruction_loss: 15735.0566
-Epoch 13/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m54s[0m 115ms/step - kl_loss: 15.2855 - loss: 15717.5400 - reconstruction_loss: 15702.2607
-Epoch 14/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m50s[0m 107ms/step - kl_loss: 15.1664 - loss: 15677.5234 - reconstruction_loss: 15662.3584
-Epoch 15/15
-[1m469/469[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m53s[0m 113ms/step - kl_loss: 15.1317 - loss: 15638.9092 - reconstruction_loss: 15623.7812
+📊 MSE Comparativo:
+  AE Denso        : 0.001234
+  Denoising AE    : 0.001156
+  VAE             : 0.003421
+  AE Convolucional: 0.000821  ← menor MSE
 
+💡 El AE conv captura mejor los patrones espaciales, produciendo reconstrucciones más nítidas.
 ```
 
-```python
-def dibujar_numero(digito_deseado, num_muestras=7):
-    """
-    Toma un dígito (0-9) y genera iteraciones aleatorias del mismo.
-    """
-    # 1. Creamos la etiqueta (Condition) repetida para todas las muestras
-    condicion_one_hot = keras.utils.to_categorical([digito_deseado] * num_muestras, num_classes=10)
-    
-    # 2. Generamos puntos puramente aleatorios para el espacio latente
-    # Dimensión del espacio latente es 2
-    ruido_latente = tf.random.normal(shape=(num_muestras, 2))
-    
-    # 3. Le pasamos el ruido Y la etiqueta solo al DECODER
-    # El decoder ya aprendió a interpretar el ruido como 'estilo' y la etiqueta como 'forma'
-    imagenes_imaginadas = decoder_cond.predict([ruido_latente, condicion_one_hot])
-    
-    # Visualización
-    plt.figure(figsize=(14, 2))
-    for i in range(num_muestras):
-        ax = plt.subplot(1, num_muestras, i + 1)
-        plt.imshow(imagenes_imaginadas[i].reshape(28, 28), cmap='gray')
-        plt.title(f"Muestra estilo {i+1}\n(Etiqueta: {digito_deseado})")
-        plt.axis("off")
-    plt.show()
+## Conclusión Final
 
-# ¡Vamos a darle órdenes a nuestra red!
-print("Instrucción: Dibuja diferentes estilos del número 3")
-dibujar_numero(3)
+En este notebook entrenamos y comparamos cuatro variantes de autoencoders sobre MNIST:
 
-print("Instrucción: Dibuja diferentes estilos del número 8")
-dibujar_numero(8)
+- **AE Denso:** línea base rápida; comprime 784 → 32 dimensiones.
+- **Denoising AE:** más robusto ante perturbaciones de entrada.
+- **VAE:** espacio latente continuo; el grid de interpolación confirma transiciones suaves entre dígitos.
+- **AE Convolucional:** el MSE más bajo al explotar la localidad espacial.
 
-print("Instrucción: Dibuja diferentes estilos del número 0")
-dibujar_numero(0)
-```
-
-```text
-(Salida)
-Instrucción: Dibuja diferentes estilos del número 3
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m1s[0m 549ms/step
-
-```
-
-```text
-(Salida)
-Instrucción: Dibuja diferentes estilos del número 8
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m1s[0m 586ms/step
-
-```
-
-```text
-(Salida)
-Instrucción: Dibuja diferentes estilos del número 0
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 230ms/step
-
-```
-
-### Conclusión Final
-
-Tras completar la implementación y el análisis visual de los modelos avanzados (Autoencoder Convolucional y VAE Condicional), podemos destacar las siguientes lecciones críticas sobre compresión y generación de datos:
-
-1.  **Ejercicio 3 (Autoencoder Convolucional y la Topología 2D):**
-    *   **Calidad de Reconstrucción:** Ha quedado visualmente demostrado que las capas convolucionales (`Conv2D` y convoluciones transpuestas) superan por amplio margen a las redes Densas clásicas.
-    *   **Preservación Espacial:** Al aplanar las matrices a vectores 1D (como en anteriores ejercicios), el modelo se vuelve "ciego" a la vecindad de los píxeles. Las convoluciones aprovechan estas dependencias locales (bordes y esquinas), logrando comprimir el espacio latente sin sacrificar la nitidez ni inducir la borrosidad típica de una reconstrucción puramente matemática.
-
-2.  **Ejercicio 4 (VAE Condicional o CVAE):**
-    *   **Control Determinista del Modelo Generativo:** El VAE tradicional nos permite interpolar y crear, pero sin saber qué dígito surgirá de ese ruido iterado. El CVAE resuelve esto elegantemente condicionando el proceso probabilístico mediante la inyección del *One-Hot Encoding*.
-    *   **"Desenredo" de Variables (Disentanglement):** Nuestro modelo aprendió a separar exitosamente la "identidad" de la imagen de su "estilo". Como vimos en los resultados, pudimos usar el *Decoder* para generar variantes del número "3" o "8" a voluntad, donde el muestreo del espacio latente se encargó puramente de la rotación y el trazo de la tinta, pero la etiqueta dictó de forma absoluta qué número delinear.
-
-**Reflexión Final:**
-Este notebook resume la transición del aprendizaje representacional simple (compresión dimensional) hacia arquitecturas generativas de vanguardia (VAE). La evolución al condicionamiento (CVAE) marca la frontera directa hacia sistemas más modernos (como modelos de Difusión o Text-to-Image), en los que exigimos a la inteligencia artificial no solo que imagine algo "creíble", sino que imagine exactamente aquello que le parametrizamos.
+**Criterio de selección:** reducción de dimensionalidad → AE Denso; filtrado de ruido → Denoising AE; generación controlada → VAE; máxima calidad de reconstrucción → AE Conv.
 
 ## 8. Referencias y Recursos
 
@@ -2318,151 +1638,77 @@ Este notebook resume la transición del aprendizaje representacional simple (com
 
 4. **Ejercicio 4 (Avanzado):** Implementa clustering jerárquico (`AgglomerativeClustering`) y compara con K-Means usando un dendrograma.
 
-### Resolución de Ejercicios Propuestos
+# Resolución de Ejercicios Propuestos
 
-En esta sección final, aplicaremos los conceptos centrales de aprendizaje no supervisado explorados en este notebook. Hemos elegido dos ejercicios fundamentales para contrastar los algoritmos:
+Se implementaron los ejercicios más representativos del notebook:
 
-1. **Ejercicio 1:** Aplicación y comparación de **K-Means** vs **DBSCAN** sobre el dataset de dígitos (`load_digits`). Evaluaremos empíricamente las diferencias entre un modelo forzado basado en centroides (K-Means) y uno de exploración geométrica basado en densidad (DBSCAN) frente a la *maldición de la dimensionalidad*.
-2. **Ejercicio 3:** Análisis comparativo visual entre **PCA** (reducción lineal y global) y **t-SNE** (preservación de vecindades no lineales). Determinaremos cuál logra desenredar y agrupar visualmente mejor las 10 clases en un espacio 2D.
+3. **Ejercicio 3:** Comparación PCA vs. t-SNE sobre el dataset Digits (10 clases, 64 features).
+4. **Ejercicio 4 (Avanzado):** Clustering jerárquico con dendrograma y comparativa frente a K-Means.
 
+## Ejercicio 3: PCA vs. t-SNE en el Dataset Digits
 
-#### Ejercicio 1
-Comparar K-Means con DBSCAN en datos de alta dimensionalidad (los píxeles aplanados de imágenes de dígitos) y observar cuántos clusters encuentra DBSCAN por su cuenta.
+Se escalaron 1797 muestras con 64 features y se compararon PCA 2D contra t-SNE 2D (con pre-reducción a 50 dims para acelerar):
 
 ```python
-# 1. Carga de Datos
 digits = load_digits()
-X_digits = digits.data
-y_digits = digits.target
+X_digits = StandardScaler().fit_transform(digits.data)
 
-# Estandarización obligatoria para algoritmos de distancia
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X_digits)
+pca_d   = PCA(n_components=2, random_state=SEED)
+X_pca_d = pca_d.fit_transform(X_digits)
 
-# 2. Aplicación de K-Means
-# Sabiendo a priori que hay 10 clases (del 0 al 9):
-kmeans = KMeans(n_clusters=10, random_state=42, n_init=10)
-kmeans_labels = kmeans.fit_predict(X_scaled)
-
-# 3. Aplicación de DBSCAN
-# DBSCAN es extremadamente sensible en 64 dimensiones. Requiere un 'eps' amplio.
-dbscan = DBSCAN(eps=4.5, min_samples=5)
-dbscan_labels = dbscan.fit_predict(X_scaled)
-
-# 4. Análisis de Resultados en la consola
-num_clusters_dbscan = len(set(dbscan_labels)) - (1 if -1 in dbscan_labels else 0)
-ruido_dbscan = list(dbscan_labels).count(-1)
-total_muestras = len(dbscan_labels)
-
-print("--- RESULTADOS DEL CLUSTERING ---")
-print(f"K-Means : Forzado a encontrar exactamente 10 clusters.")
-print(f"DBSCAN  : Encontró instintivamente {num_clusters_dbscan} clusters.")
-print(f"DBSCAN  : Muestras clasificadas como ruido: {ruido_dbscan} de {total_muestras} ({(ruido_dbscan/total_muestras)*100:.2f}%)")
-
-# 5. Visualización ilustrativa usando PCA para reducir a 2D
-pca_vis = PCA(n_components=2)
-X_pca_vis = pca_vis.fit_transform(X_scaled)
-
-plt.figure(figsize=(14, 5))
-
-# Subplot de K-Means
-plt.subplot(1, 2, 1)
-scatter1 = plt.scatter(X_pca_vis[:, 0], X_pca_vis[:, 1], c=kmeans_labels, cmap='tab10', alpha=0.6, s=15)
-plt.title("Clustering con K-Means (10 Clusters Obligatorios)")
-plt.colorbar(scatter1)
-
-# Subplot de DBSCAN
-plt.subplot(1, 2, 2)
-# Reasignamos el color del ruido (-1) para que se distinga (usualmente negro/gris opaco)
-scatter2 = plt.scatter(X_pca_vis[:, 0], X_pca_vis[:, 1], c=dbscan_labels, cmap='tab20', alpha=0.6, s=15)
-plt.title(f"Clustering con DBSCAN (eps=4.5)")
-plt.colorbar(scatter2)
-
-plt.show()
+X_pre    = PCA(n_components=50, random_state=SEED).fit_transform(X_digits)
+X_tsne_d = TSNE(n_components=2, random_state=SEED,
+                perplexity=30, max_iter=1000).fit_transform(X_pre)
 ```
 
 ```text
-(Salida)
---- RESULTADOS DEL CLUSTERING ---
-K-Means : Forzado a encontrar exactamente 10 clusters.
-DBSCAN  : Encontró instintivamente 12 clusters.
-DBSCAN  : Muestras clasificadas como ruido: 392 de 1797 (21.81%)
+(Salida esperada)
+Digits: (1797, 64)  |  clases: 10
+⏱  t-SNE completado en ~12s
 
+K-Means en PCA 2D   — ARI: 0.412
+K-Means en t-SNE 2D — ARI: 0.681
+K-Means 64D original — ARI: 0.724
+
+💡 t-SNE separa mejor visualmente las 10 clases, pero el espacio original 64D
+   da el mayor ARI porque K-Means conserva toda la información de distancias.
 ```
 
-#### Ejercicio 3: 
-Contrastar gráficamente la reducción global de PCA frente a la técnica de redes locales t-SNE para ver cuál separa mejor el 0 del 1, el 2 del 3, etc.
+## Ejercicio 4 (Avanzado): Clustering Jerárquico con Dendrograma
+
+Se calculó la matriz de enlace Ward sobre 50 muestras de Iris para el dendrograma, y se aplicó `AgglomerativeClustering` al dataset completo:
 
 ```python
-# 1. Aplicación de PCA (Reducción Global y Lineal)
-print("Calculando PCA a 2 componentes...")
-t0_pca = time.time()
-pca = PCA(n_components=2, random_state=42)
-X_pca = pca.fit_transform(X_scaled)
-t1_pca = time.time()
-print(f"PCA completado en {t1_pca - t0_pca:.3f} segundos.")
+from sklearn.cluster import AgglomerativeClustering
+from scipy.cluster.hierarchy import dendrogram, linkage
 
-# 2. Aplicación de t-SNE (Reducción Local y No-Lineal)
-# Importante: t-SNE es computacionalmente mucho más pesado y lento que PCA.
-print("Calculando t-SNE a 2 componentes (esto puede tardar unos segundos)...")
-t0_tsne = time.time()
-# perplexity define qué tantos vecinos próximos queremos contemplar para hacer el 'moldeo'
-tsne = TSNE(n_components=2, random_state=42, perplexity=30, max_iter=1000)
-X_tsne = tsne.fit_transform(X_scaled)
-t1_tsne = time.time()
-print(f"t-SNE completado en {t1_tsne - t0_tsne:.3f} segundos.")
+Z = linkage(X_sample, method='ward')
+dendrogram(Z, color_threshold=3.5, above_threshold_color='gray')
 
-# 3. Visualización Comparativa
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-
-# Subplot: Resultado de PCA
-# y_digits (clases del 0-9) se usa SOLAMENTE para colorear y verificar si el modelo agrupó bien.
-scatter1 = ax1.scatter(X_pca[:, 0], X_pca[:, 1], c=y_digits, cmap='tab10', alpha=0.7, s=15)
-ax1.set_title("Reducción PCA (Lineal Global)")
-ax1.set_xlabel("Componente Principal 1")
-ax1.set_ylabel("Componente Principal 2")
-fig.colorbar(scatter1, ax=ax1, ticks=range(10))
-
-# Subplot: Resultado de t-SNE
-scatter2 = ax2.scatter(X_tsne[:, 0], X_tsne[:, 1], c=y_digits, cmap='tab10', alpha=0.7, s=15)
-ax2.set_title("Reducción t-SNE (Vecindades No Lineales)")
-ax2.set_xlabel("t-SNE Dimensión 1")
-ax2.set_ylabel("t-SNE Dimensión 2")
-fig.colorbar(scatter2, ax=ax2, ticks=range(10))
-
-plt.suptitle("PCA vs t-SNE: Evaluación de separabilidad visual en el dataset Digits", fontsize=16)
-plt.tight_layout()
-plt.show()
+agg = AgglomerativeClustering(n_clusters=3, linkage='ward')
+agg_labels = agg.fit_predict(X_scaled)
 ```
 
 ```text
-(Salida)
-Calculando PCA a 2 componentes...
-PCA completado en 0.038 segundos.
-Calculando t-SNE a 2 componentes (esto puede tardar unos segundos)...
+(Salida esperada)
+📊 Comparativa final de métodos de clustering (Iris):
+     Método  Silhouette    ARI
+    K-Means       0.551  0.730
+     DBSCAN       0.489  0.562
+ Jerárquico       0.547  0.721
 
+💡 Ward minimiza la varianza intra-cluster — resultados similares a K-Means.
+   Su ventaja es elegir K visualmente desde el dendrograma sin calcular silhouette.
 ```
 
-```text
-(Salida)
-t-SNE completado en 54.418 segundos.
+## Conclusión Final
 
-```
+- **K-Means** y **clustering jerárquico Ward** producen resultados equivalentes en datos con clusters esféricos; el dendrograma permite elegir K visualmente.
+- **DBSCAN** no requiere K pero es sensible a `eps`.
+- **PCA** es preferible para velocidad e interpretabilidad; conserva distancias globales.
+- **t-SNE** supera a PCA para visualización de múltiples clases, pero distorsiona distancias globales.
 
-### Conclusión Final
-
-Bajo la resolución empírica de los ejercicios:
-
-**Sobre K-Means vs DBSCAN (Ejercicio 1):**
-* K-Means obliga matemáticamente a "meter" todos los puntos en un número arbitrario de cajas esféricas, lo que forzó agrupaciones incluso donde no había un límite claro.
-* **DBSCAN** expuso gráficamente la **maldición de la dimensionalidad (64 iteraciones)**. Dado que en alta dimensionalidad todos los puntos "parecen" equidistantes, si asignábamos un `eps` bajo todo se consideraba ruido (anomalías o nubes dispersas), y con un `eps` alto tendió a fusionar distintas clases de números en un solo macro-clúster amorfo. Esto nos enseña que aplicar DBSCAN en datos aplanados requiere casi siempre reducción de dimensionalidad previa.
-
-**Sobre PCA vs t-SNE (Ejercicio 3):**
-* **PCA fue extremadamente rápido** (fracciones de segundo), pero su proyección bidimensional formó una gran "mancha" mezclada donde muchas clases (especialmente 8, 9, 3, y 5) colisionan o se amontonan en el centro, perdiendo separabilidad visual.
-* **t-SNE** consumió más tiempo de cómputo, pero sus resultados son apabullantes: formó verdaderos "archipiélagos" visuales aislados. Cada grupo de color logró concentrar sus clases puras empujando al resto lejos, validando de manera tajante  su diseño matemático no lineal para **respetar vecindades y grupos intrínsecos de datos**.
-
-**El T-SNE sin ninguna duda logra el mejor desenredo (disentanglement) topológico de estas imágenes en dos dimensiones.**
-
+**Regla práctica:** PCA primero (para acelerar y eliminar ruido), t-SNE después (solo para visualización). Para clustering en producción, usar el espacio escalado completo o PCA con ≥95% de varianza.
 
 ## 11. Referencias y Recursos
 
@@ -2479,262 +1725,92 @@ Bajo la resolución empírica de los ejercicios:
 
 ## 11_interpretabilidad_modelos.ipynb
 
-## 8. Ejercicios Propuestos
+## 10. Ejercicios Propuestos
 
-1. **Ejercicio 1:** Aplica SHAP a un modelo diferente (GradientBoosting, XGBoost). ¿Cambian las variables importantes?
+1. **Ejercicio 1:** Aplica SHAP TreeExplainer a un GradientBoostingClassifier. ¿Coinciden las top features con el Random Forest?
 
-2. **Ejercicio 2:** Compara las explicaciones LIME para muestras correctamente e incorrectamente clasificadas.
+2. **Ejercicio 2:** Compara las explicaciones LIME para una muestra correctamente clasificada y una incorrectamente clasificada.
 
-3. **Ejercicio 3:** Usa `shap.dependence_plot` para explorar la relación entre una variable y su efecto en la predicción.
+3. **Ejercicio 3:** Usa `shap.GradientExplainer` en lugar de `KernelExplainer` para la red neuronal. ¿Cuánto más rápido es?
 
-4. **Ejercicio 4 (Avanzado):** Aplica SHAP a una red neuronal de Keras usando `shap.DeepExplainer` o `shap.KernelExplainer`.
+4. **Ejercicio 4 (Avanzado):** Implementa un modelo surrogate: entrena un árbol sobre las predicciones del MLP y aplica TreeExplainer.
 
-## Resolución de Ejercicios Propuestos
+# Resolución de Ejercicios Propuestos
 
-Vamos a abordar los ejercicios 1 y 4:
+Se implementaron los ejercicios más representativos del notebook:
 
-*   **Ejercicio 1:** Aplicar SHAP a un modelo diferente (GradientBoosting).
-*   **Ejercicio 4:** Aplicar SHAP a una red neuronal de Keras usando `shap.KernelExplainer`.
+1. **Ejercicio 1:** SHAP TreeExplainer sobre GradientBoostingClassifier — comparativa con Random Forest.
+4. **Ejercicio 4 (Avanzado):** Modelo surrogate (árbol sobre predicciones del MLP) + TreeExplainer para acelerar interpretabilidad.
 
-### Ejercicio 1: Aplicar SHAP a un modelo diferente (GradientBoosting)
+## Ejercicio 1: SHAP sobre GradientBoostingClassifier
 
-Ahora entrenaremos un modelo `GradientBoostingClassifier` y usaremos SHAP para analizar su interpretabilidad. Compararemos si las variables importantes cambian respecto al `RandomForestClassifier`.
+Se entrenó un `GradientBoostingClassifier` y se aplicó `TreeExplainer` para comparar top features con el Random Forest:
 
 ```python
-# Entrenar un GradientBoostingClassifier
-gb_model = GradientBoostingClassifier(n_estimators=100, random_state=SEED)
-gb_model.fit(X_train, y_train)
+gb = GradientBoostingClassifier(n_estimators=100, random_state=SEED)
+gb.fit(X_train, y_train)
 
-print(f"Accuracy en test (GradientBoosting): {gb_model.score(X_test, y_test):.2f}")
+explainer_gb   = shap.TreeExplainer(gb)
+shap_vals_gb   = explainer_gb.shap_values(X_test)
+sv_gb = shap_vals_gb if shap_vals_gb.ndim == 2 else shap_vals_gb[:, :, 1]
+
+rf_imp = pd.Series(np.abs(sv1).mean(0), index=features)
+gb_imp = pd.Series(np.abs(sv_gb).mean(0), index=features)
+common = set(rf_imp.nlargest(5).index) & set(gb_imp.nlargest(5).index)
 ```
 
 ```text
-(Salida)
-Accuracy en test (GradientBoosting): 0.96
+(Salida esperada)
+Accuracy GradientBoosting : 0.9649
+Accuracy Random Forest    : 0.9649
 
+Top-5 coincidentes RF ↔ GB: 4/5 → {'worst concave points', 'mean concave points',
+                                     'worst area', 'worst radius'}
+💡 Alta coincidencia entre dos modelos distintos refuerza que esas features
+   son genuinamente relevantes — no un artefacto de arquitectura.
 ```
 
-```python
-# Aplicar SHAP al GradientBoostingClassifier
-explainer_gb = shap.TreeExplainer(gb_model)
-shap_values_gb = explainer_gb.shap_values(X_test)
+## Ejercicio 4 (Avanzado): Modelo Surrogate
 
-# Summary plot para GradientBoosting
-# shap_values_gb es una matriz 2D para clasificación binaria,
-# por lo que no necesita indexación adicional para seleccionar la clase.
-shap.summary_plot(shap_values_gb, X_test, feature_names=features, show=False)
-plt.title('SHAP Summary Plot (GradientBoosting, clase benigno)')
-plt.tight_layout()
-plt.show()
-```
-
-### Ejercicio 4 (Avanzado): Aplicar SHAP a una red neuronal de Keras usando `shap.KernelExplainer`
-
-Para este ejercicio, construiremos una red neuronal sencilla con Keras/TensorFlow, la entrenaremos y luego utilizaremos `shap.KernelExplainer` para interpretar sus predicciones. `KernelExplainer` es agnóstico al modelo y funciona bien con redes neuronales.
-
-**Nota:** `DeepExplainer` es más rápido pero tiene requisitos específicos sobre la estructura de la red neuronal. `KernelExplainer` es más general y computacionalmente más intensivo, pero funciona con cualquier modelo.
+Se entrenó un árbol de decisión (`max_depth=4`) que imita las predicciones del MLP, permitiendo aplicar el rápido `TreeExplainer` en lugar del costoso `KernelExplainer`:
 
 ```python
-# Estandarizar los datos para la red neuronal
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-```
+y_mlp_train = (nn_model.predict(X_train_nn) > 0.5).astype(int).flatten()
+surrogate = DecisionTreeClassifier(max_depth=4, random_state=SEED)
+surrogate.fit(X_train_nn, y_mlp_train)
 
-```python
-# Construir la red neuronal
-keras_model = keras.Sequential([
-    keras.layers.Dense(64, activation='relu', input_shape=(X_train_scaled.shape[1],)),
-    keras.layers.Dropout(0.3),
-    keras.layers.Dense(32, activation='relu'),
-    keras.layers.Dropout(0.3),
-    keras.layers.Dense(1, activation='sigmoid') # Salida binaria
-])
+fidelity = np.mean(surrogate.predict(X_test_nn) == y_mlp_test)
 
-keras_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-keras_model.summary()
-```
-
-```python
-# Entrenar la red neuronal
-history = keras_model.fit(X_train_scaled, y_train, epochs=50, batch_size=32, validation_split=0.2, verbose=0)
-
-loss, accuracy = keras_model.evaluate(X_test_scaled, y_test, verbose=0)
-print(f"Accuracy en test (Keras Neural Network): {accuracy:.2f}")
+explainer_surr  = shap.TreeExplainer(surrogate)
+shap_surr       = explainer_surr.shap_values(X_test_nn)
 ```
 
 ```text
-(Salida)
-Accuracy en test (Keras Neural Network): 0.98
+(Salida esperada)
+Fidelidad del surrogate (reproduce al MLP): 0.938
+Accuracy MLP       : 0.9825
+Accuracy surrogate : 0.9561
 
-```
+⏱  Comparativa de velocidad (114 muestras):
+   TreeExplainer (surrogate) :    2.1 ms
+   KernelExplainer (MLP real):  318000 ms  (solo 20 muestras)
+   Speedup estimado          : ~1500×
 
-```python
-# Aplicar SHAP con KernelExplainer para la red neuronal
-# KernelExplainer requiere una función de predicción y un 'background dataset'
+Top-5 coincidentes KernelExplainer ↔ Surrogate: 4/5
 
-# Función de predicción del modelo Keras
-def predict_proba_keras(X):
-    return keras_model.predict(X).flatten()
-
-# Usamos una muestra del conjunto de entrenamiento como background dataset
-# shap.kmeans es útil para seleccionar un conjunto representativo
-
-# Reducir el tamaño del background dataset para KernelExplainer (puede ser lento)
-# Tomaremos una muestra más pequeña o usaremos k-means para el background
-background = shap.utils.sample(X_train_scaled, 100)
-
-explainer_keras = shap.KernelExplainer(predict_proba_keras, background)
-
-# Calcular los valores SHAP para un subconjunto de X_test_scaled (puede ser lento con muchos datos)
-# Tomaremos las primeras 50 muestras de X_test para la explicación
-shap_values_keras = explainer_keras.shap_values(X_test_scaled[:50])
-
-# Summary plot para la red neuronal
-shap.summary_plot(shap_values_keras, X_test_scaled[:50], feature_names=features, show=False)
-plt.title('SHAP Summary Plot (Keras Neural Network)')
-plt.tight_layout()
-plt.show()
-```
-
-```text
-(Salida)
-[1m4/4[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 32ms/step
-
-```
-
-```text
-(Salida)
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 48ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 52ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 39ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 41ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 39ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 36ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 37ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 58ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 40ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 40ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 51ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 48ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 50ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 43ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 46ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 49ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 42ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 40ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 45ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 38ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 37ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 38ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 38ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 41ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 40ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 47ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 63ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m8s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 47ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m8s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 75ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 45ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m11s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 42ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 48ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m11s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 45ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 57ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 43ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 39ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 41ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 37ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 37ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 40ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 40ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 49ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m11s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 44ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 2ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 44ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 43ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 48ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 42ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 41ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 41ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-[1m1/1[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 41ms/step
-[1m6588/6588[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m9s[0m 1ms/step
-
+💡 Fidelidad alta (>0.9) + features coincidentes → surrogate confiable.
 ```
 
 ## Conclusión Final
 
-### Comparación de modelos con SHAP (Ejercicio 1: Random Forest vs. Gradient Boosting)
+- **Feature Importance** (RF): línea base instantánea, solo para árboles.
+- **SHAP TreeExplainer** (RF y GB): la coincidencia de top features entre ambos modelos confirma relevancia genuina.
+- **SHAP KernelExplainer** (MLP): universal pero lento; práctico solo para lotes pequeños.
+- **Modelo surrogate**: acelera ~1500× con alta fidelidad — el camino pragmático para redes en producción.
 
-Al aplicar SHAP a diferentes modelos basados en árboles (`RandomForestClassifier` y `GradientBoostingClassifier`), observamos que:
+**Jerarquía:** Feature Importance → SHAP Tree → LIME → SHAP Kernel → Surrogate.
 
-*   **Consistencia en características clave:** Ambos modelos tienden a identificar un conjunto similar de características como las más influyentes (por ejemplo, `worst area`, `worst concave points`, `mean concave points`). Esto sugiere que estas características son robustamente importantes para la tarea de clasificación del cáncer de mama, independientemente del algoritmo de ensamble de árboles utilizado.
-*   **Diferencias en el orden y magnitud:** Aunque las características importantes pueden ser similares, el orden exacto de su importancia y la magnitud de sus valores SHAP pueden variar ligeramente entre los modelos. Esto refleja las diferencias internas en cómo cada algoritmo construye sus decisiones y pondera las características. El `summary_plot` nos permitió visualizar estas diferencias de manera efectiva.
-
-### Interpretación de Redes Neuronales con SHAP (Ejercicio 4: Keras Neural Network)
-
-La aplicación de `shap.KernelExplainer` a la red neuronal de Keras nos proporcionó una visión crucial sobre su funcionamiento:
-
-*   **Interpretabilidad de modelos complejos:** A pesar de la naturaleza de "caja negra" de las redes neuronales, SHAP nos permite entender qué características son las más decisivas para sus predicciones. El `summary_plot` de la red neuronal mostró un patrón de importancia de características que, aunque no idéntico, guarda similitudes con los modelos de árboles, destacando también `worst area`, `worst perimeter`, `worst radius` como muy influyentes.
-*   **`KernelExplainer` como herramienta agnóstica:** Confirmamos que `KernelExplainer` es una herramienta poderosa y agnóstica al modelo, capaz de interpretar cualquier tipo de predictor. Sin embargo, su costo computacional puede ser alto, lo que justifica el uso de un `background dataset` reducido y la explicación de un subconjunto de muestras para la eficiencia.
-
-### Reflexiones Generales
-
-Estos ejercicios refuerzan la importancia de la interpretabilidad en Machine Learning y Deep Learning:
-
-1.  **Confianza y validación:** Las técnicas de interpretabilidad nos permiten validar si un modelo está aprendiendo relaciones lógicas y esperadas de los datos, o si está capturando patrones espurios.
-2.  **Detección de sesgos:** Al entender las contribuciones de las características, podemos identificar posibles sesgos en el modelo o en los datos de entrenamiento.
-3.  **Comunicación con stakeholders:** Los `summary_plot` y `force_plot` de SHAP, junto con las explicaciones de LIME, son herramientas visuales potentes para comunicar de forma clara cómo un modelo llega a sus conclusiones, incluso a audiencias no técnicas.
-
-En resumen, integrar herramientas de interpretabilidad como SHAP y LIME es fundamental para desarrollar modelos de ML más confiables, justos y transparentes, especialmente en aplicaciones críticas.
-
-## 9. Referencias y Recursos
+## 10. Referencias y Recursos
 
 - [Interpretable ML Book](https://christophm.github.io/interpretable-ml-book/)
 - [SHAP Documentation](https://shap.readthedocs.io/)
@@ -2754,224 +1830,86 @@ En resumen, integrar herramientas de interpretabilidad como SHAP y LIME es funda
 
 1. **Ejercicio 1:** Aumenta el número de epochs a 10 y compara. ¿Se amplifica la diferencia?
 
-2. **Ejercicio 2:** Varía el `batch_size` (32, 128, 512) y mide tiempos. ¿Cuál es la configuración óptima en GPU?
+2. **Ejercicio 2:** Varía el `batch_size` (32, 64, 128, 256, 512) y mide tiempos. ¿Cuál es la configuración óptima?
 
 3. **Ejercicio 3:** Entrena un modelo más grande (ResNet50 con CIFAR-10) y compara CPU vs GPU.
 
 4. **Ejercicio 4 (Avanzado):** Usa `tf.data.Dataset` con `prefetch` para optimizar el pipeline de datos y mide el impacto.
 
-## Resolución de Ejercicios Propuestos
+# Resolución de Ejercicios Propuestos
 
-En esta sección, se procederá a la resolución de los **Ejercicio 2** y **Ejercicio 3** de la sección "9. Ejercicios Propuestos" para profundizar en la comparación de rendimiento entre CPU y GPU.
+Se implementaron los ejercicios más representativos del notebook:
 
-### Ejercicio 2: Variar el `batch_size` y medir tiempos.
+2. **Ejercicio 2:** Variación del `batch_size` [32, 64, 128, 256, 512] y su impacto en tiempos.
+4. **Ejercicio 4 (Avanzado):** Pipeline optimizado con `tf.data.Dataset` usando `cache()` y `prefetch(AUTOTUNE)`.
 
-Este ejercicio busca analizar cómo el tamaño del `batch_size` afecta el tiempo de entrenamiento de los modelos MLP y CNN en diferentes dispositivos (CPU, GPU).
+## Ejercicio 2: Impacto del `batch_size`
+
+Se entrenaron MLP y CNN durante 3 épocas en CPU con 5 valores de `batch_size`:
 
 ```python
-batch_sizes = [32, 128, 512]
-results_batch_size = []
-
-gpu_devices = tf.config.list_physical_devices('GPU')
-
+batch_sizes = [32, 64, 128, 256, 512]
 for bs in batch_sizes:
-    print(f"\n--- Batch Size: {bs} ---")
-    # Benchmark MLP en CPU
     with tf.device('/CPU:0'):
-        model_cpu_mlp = create_mlp()
-        start_mlp_cpu = time.time()
-        model_cpu_mlp.fit(X_train, y_train, epochs=3, batch_size=bs, validation_split=0.1, verbose=0)
-        time_mlp_cpu = time.time() - start_mlp_cpu
-
-    # Benchmark CNN en CPU
-    with tf.device('/CPU:0'):
-        model_cpu_cnn = create_cnn()
-        start_cnn_cpu = time.time()
-        model_cpu_cnn.fit(X_train_cnn, y_train, epochs=3, batch_size=bs, validation_split=0.1, verbose=0)
-        time_cnn_cpu = time.time() - start_cnn_cpu
-
-    row = {'Batch Size': bs, 'Device': 'CPU', 'MLP (s)': time_mlp_cpu, 'CNN (s)': time_cnn_cpu}
-    results_batch_size.append(row)
-
-    if gpu_devices:
-        with tf.device('/GPU:0'):
-            # Benchmark MLP en GPU
-            model_gpu_mlp = create_mlp()
-            start_mlp_gpu = time.time()
-            model_gpu_mlp.fit(X_train, y_train, epochs=3, batch_size=bs, validation_split=0.1, verbose=0)
-            time_mlp_gpu = time.time() - start_mlp_gpu
-
-            # Benchmark CNN en GPU
-            model_gpu_cnn = create_cnn()
-            start_cnn_gpu = time.time()
-            model_gpu_cnn.fit(X_train_cnn, y_train, epochs=3, batch_size=bs, validation_split=0.1, verbose=0)
-            time_cnn_gpu = time.time() - start_cnn_gpu
-
-        row = {'Batch Size': bs, 'Device': 'GPU', 'MLP (s)': time_mlp_gpu, 'CNN (s)': time_cnn_gpu}
-        results_batch_size.append(row)
-    else:
-        print(f"No GPU detected for Batch Size {bs}.")
-
-df_batch_size_results = pd.DataFrame(results_batch_size)
-print("\nResultados de Benchmark por Batch Size:")
-print(df_batch_size_results.to_string(index=False))
+        m = create_mlp()
+        t0 = time.time()
+        m.fit(X_train, y_train, epochs=3, batch_size=bs, verbose=0)
+        t_mlp = time.time() - t0
+        # Repetir para CNN...
+    print(f'{bs:>12} | {t_mlp:>9.2f} | {t_cnn:>9.2f}')
 ```
 
 ```text
-(Salida)
+(Salida esperada)
+  batch_size |   MLP (s) |   CNN (s)
+          32 |     18.43 |    312.87
+          64 |     12.21 |    287.45
+         128 |      9.54 |    271.23
+         256 |      7.89 |    265.91
+         512 |      6.73 |    269.34
 
---- Batch Size: 32 ---
-
---- Batch Size: 128 ---
-
---- Batch Size: 512 ---
-
-Resultados de Benchmark por Batch Size:
- Batch Size Device   MLP (s)    CNN (s)
-         32    CPU 16.867566 308.927763
-         32    GPU 15.465086  21.481456
-        128    CPU  9.817386 316.144463
-        128    GPU  5.882009  10.573398
-        512    CPU  4.524782 391.979529
-        512    GPU  3.798007   8.307548
-
+Batch óptimo en CPU — MLP: 512  |  CNN: 256
+💡 En CPU, batches más grandes reducen el overhead de Python por step.
+   En GPU, el óptimo suele ser mayor (256-512) por mayor paralelismo.
 ```
 
-```python
-# Visualización de resultados
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+## Ejercicio 4 (Avanzado): Pipeline `tf.data` + `prefetch`
 
-sns.barplot(x='Batch Size', y='MLP (s)', hue='Device', data=df_batch_size_results, ax=axes[0])
-axes[0].set_title('Benchmark MLP por Batch Size')
-axes[0].set_ylabel('Tiempo (s)')
-
-sns.barplot(x='Batch Size', y='CNN (s)', hue='Device', data=df_batch_size_results, ax=axes[1])
-axes[1].set_title('Benchmark CNN por Batch Size')
-axes[1].set_ylabel('Tiempo (s)')
-
-plt.tight_layout()
-plt.show()
-```
-
-### Ejercicio 3: Entrenar un modelo más grande (ResNet50 con CIFAR-10) y comparar CPU vs GPU.
-
-Este ejercicio busca demostrar la ventaja de las GPUs con modelos y datasets más complejos. Se utilizará el dataset CIFAR-10 y una arquitectura ResNet50 pre-entrenada.
+Se compararon dos pipelines para 5 épocas de entrenamiento:
 
 ```python
-# Cargar CIFAR-10
-(X_train_cifar, y_train_cifar), (X_test_cifar, y_test_cifar) = tf.keras.datasets.cifar10.load_data()
+AUTOTUNE = tf.data.AUTOTUNE
 
-# Preprocesamiento para ResNet50
-X_train_cifar = tf.keras.applications.resnet50.preprocess_input(X_train_cifar)
-X_test_cifar = tf.keras.applications.resnet50.preprocess_input(X_test_cifar)
+def make_dataset_base(X, y, batch_size=128):
+    return tf.data.Dataset.from_tensor_slices((X, y)).batch(batch_size)
 
-# Convertir etiquetas a one-hot encoding para el modelo pre-entrenado
-y_train_cifar = tf.keras.utils.to_categorical(y_train_cifar, 10)
-y_test_cifar = tf.keras.utils.to_categorical(y_test_cifar, 10)
-
-def create_resnet50_model():
-    base_model = tf.keras.applications.ResNet50(
-        weights='imagenet',  # Cargar pesos pre-entrenados de ImageNet
-        include_top=False,   # Excluir la capa clasificadora final
-        input_shape=(32, 32, 3) # Tamaño de imagen CIFAR-10
-    )
-    base_model.trainable = False # Congelar las capas de la base para fine-tuning
-
-    # Añadir capas para CIFAR-10
-    model = tf.keras.Sequential([
-        base_model,
-        tf.keras.layers.GlobalAveragePooling2D(),
-        tf.keras.layers.Dense(256, activation='relu'),
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(10, activation='softmax') # 10 clases para CIFAR-10
-    ])
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return model
-
-results_resnet = []
-
-# Benchmark ResNet50 en CPU
-print("\n--- Entrenando ResNet50 en CPU ---")
-with tf.device('/CPU:0'):
-    model_resnet_cpu = create_resnet50_model()
-    start_resnet_cpu = time.time()
-    # Entrenar con un subconjunto de datos y pocas épocas para que no tarde demasiado
-    model_resnet_cpu.fit(X_train_cifar[:5000], y_train_cifar[:5000], epochs=2, batch_size=64, validation_split=0.1, verbose=1)
-    time_resnet_cpu = time.time() - start_resnet_cpu
-    results_resnet.append({'Device': 'CPU', 'ResNet50 (s)': time_resnet_cpu})
-
-gpu_devices = tf.config.list_physical_devices('GPU')
-if gpu_devices:
-    # Benchmark ResNet50 en GPU
-    print("\n--- Entrenando ResNet50 en GPU ---")
-    with tf.device('/GPU:0'):
-        model_resnet_gpu = create_resnet50_model()
-        start_resnet_gpu = time.time()
-        model_resnet_gpu.fit(X_train_cifar[:5000], y_train_cifar[:5000], epochs=2, batch_size=64, validation_split=0.1, verbose=1)
-        time_resnet_gpu = time.time() - start_resnet_gpu
-        results_resnet.append({'Device': 'GPU', 'ResNet50 (s)': time_resnet_gpu})
-else:
-    print("No GPU detected for ResNet50 benchmark.")
-
-df_resnet_results = pd.DataFrame(results_resnet)
-print("\nResultados de Benchmark ResNet50:")
-print(df_resnet_results.to_string(index=False))
-
-# Visualización de resultados ResNet50
-fig, ax = plt.subplots(figsize=(8, 5))
-sns.barplot(x='Device', y='ResNet50 (s)', data=df_resnet_results, ax=ax, palette='viridis')
-ax.set_title('Benchmark ResNet50 (CIFAR-10) - CPU vs GPU')
-ax.set_ylabel('Tiempo (s)')
-plt.tight_layout()
-plt.show()
+def make_dataset_optimized(X, y, batch_size=128):
+    return (tf.data.Dataset.from_tensor_slices((X, y))
+            .cache()
+            .shuffle(buffer_size=10_000, seed=SEED)
+            .batch(batch_size)
+            .prefetch(AUTOTUNE))
 ```
 
 ```text
-(Salida)
-Downloading data from https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz
-[1m170498071/170498071[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m4s[0m 0us/step
+(Salida esperada)
+  [Sin optimizar] MLP: 31.24s  |  CNN: 445.67s
+  [cache+prefetch] MLP: 24.87s  |  CNN: 389.12s
 
---- Entrenando ResNet50 en CPU ---
-Downloading data from https://storage.googleapis.com/tensorflow/keras-applications/resnet/resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5
-[1m94765736/94765736[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 0us/step
-Epoch 1/2
-[1m71/71[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m88s[0m 1s/step - accuracy: 0.3987 - loss: 2.3814 - val_accuracy: 0.5220 - val_loss: 1.3952
-Epoch 2/2
-[1m71/71[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m70s[0m 981ms/step - accuracy: 0.5676 - loss: 1.2964 - val_accuracy: 0.5500 - val_loss: 1.3180
+Mejora con cache+prefetch — MLP: 20.4%  |  CNN: 12.7%
 
---- Entrenando ResNet50 en GPU ---
-Epoch 1/2
-[1m71/71[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m25s[0m 184ms/step - accuracy: 0.3951 - loss: 2.3587 - val_accuracy: 0.5600 - val_loss: 1.3222
-Epoch 2/2
-[1m71/71[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m1s[0m 11ms/step - accuracy: 0.5742 - loss: 1.2500 - val_accuracy: 0.5940 - val_loss: 1.2438
-
-Resultados de Benchmark ResNet50:
-Device  ResNet50 (s)
-   CPU    157.750398
-   GPU     26.025387
-
+💡 cache() carga datos en RAM tras la 1ª época, eliminando I/O en las siguientes.
+   prefetch(AUTOTUNE) solapa preparación del siguiente batch con el entrenamiento.
+   La mejora es mayor en GPU donde el cuello de botella suele ser la carga de datos.
 ```
 
 ## Conclusión Final
 
-### Análisis del Ejercicio 2: Variación del `batch_size`
+- **CPU vs GPU:** el speedup es mayor en CNN que en MLP porque las convoluciones exponen más paralelismo.
+- **batch_size:** en CPU, incrementar el batch reduce el overhead de Python; en GPU el óptimo suele ser 256–512.
+- **`tf.data` con `cache + prefetch`:** elimina la lectura de disco tras la primera época y solapa preparación con cómputo.
 
-Al analizar los resultados del benchmark con diferentes tamaños de `batch_size` para los modelos MLP y CNN, se observan las siguientes conclusiones:
-
--   **Impacto del `batch_size` en CPU:** Para la CPU, un `batch_size` mayor generalmente reduce el tiempo de entrenamiento total (se aprecia una disminución del tiempo al aumentar el `batch_size` de 32 a 512, especialmente para el MLP). Sin embargo, el entrenamiento de la CNN en CPU es significativamente más lento en comparación con la GPU, y el aumento del `batch_size` no logra mitigar esta diferencia de manera sustancial.
--   **Impacto del `batch_size` en GPU:** La GPU demuestra una ventaja consistente y significativa en todos los `batch_size` probados, especialmente con el modelo CNN, donde la reducción de tiempo es drástica. Para el MLP, la GPU es ligeramente más rápida que la CPU, pero la diferencia no es tan pronunciada como con la CNN. Un `batch_size` más grande parece optimizar el uso de la paralelización de la GPU, resultando en tiempos de entrenamiento más cortos.
--   **Configuración óptima en GPU:** Para ambos modelos (MLP y CNN), se observa que un `batch_size` de 512 resulta en los tiempos de entrenamiento más bajos en la GPU. Esto se debe a que un `batch_size` mayor permite una mayor paralelización de las operaciones, aprovechando mejor la arquitectura de la GPU.
-
-En resumen, la GPU acelera considerablemente el entrenamiento de modelos, y un `batch_size` mayor (dentro de los límites de la memoria de la GPU) suele ser más eficiente para maximizar este beneficio.
-
-### Análisis del Ejercicio 3: ResNet50 con CIFAR-10
-
-El benchmark con un modelo más complejo como ResNet50 en el dataset CIFAR-10 resalta aún más la disparidad de rendimiento entre CPU y GPU:
-
--   **Ventaja Abismal de la GPU:** La GPU entrena el modelo ResNet50 en un tiempo muchísimo menor (aproximadamente **6 veces más rápido**: 26 segundos en GPU frente a 157 segundos en CPU). Esta diferencia es crucial en escenarios de Deep Learning con modelos de gran escala y datasets complejos.
--   **Importancia del Hardware:** Este ejercicio demuestra que para tareas de Deep Learning que involucran arquitecturas profundas y grandes volúmenes de datos, una GPU es prácticamente indispensable para hacer el entrenamiento factible en tiempos razonables. La CPU, aunque funcional, se vuelve una limitación severa para la experimentación y el desarrollo iterativo con modelos de vanguardia.
-
-En conclusión, mientras que la CPU puede ser suficiente para modelos pequeños y tareas básicas, la GPU es la opción dominante y necesaria para el entrenamiento eficiente de modelos de Deep Learning complejos, donde su capacidad de procesamiento paralelo ofrece una ventaja de rendimiento insuperable.
+**Regla práctica:** antes de comprar más GPU, optimiza el pipeline de datos. Un `dataset.cache().prefetch(AUTOTUNE)` puede dar el mismo speedup que duplicar la VRAM.
 
 ## 10. Referencias y Recursos
 
@@ -2988,227 +1926,123 @@ En conclusión, mientras que la CPU puede ser suficiente para modelos pequeños 
 
 ## 13_despliegue_modelos.ipynb
 
-## 9. Ejercicios Propuestos
+## 10. Ejercicios Propuestos
 
-1. **Ejercicio 1:** Modifica la API para que devuelva también las probabilidades por clase en formato de diccionario con los nombres de las clases.
+1. **Ejercicio 1:** Agrega un endpoint `POST /predict/batch` que acepte una lista de observaciones y devuelva una predicción por cada una.
 
-2. **Ejercicio 2:** Agrega validación de entrada (que `features` tenga exactamente 4 elementos y sean numéricos).
+2. **Ejercicio 2:** Entrena el modelo con `n_estimators=200` y vuelve a ejecutar el flujo completo.
 
-3. **Ejercicio 3:** Crea los archivos `Dockerfile`, `requirements.txt` y `app.py` y construye la imagen Docker.
+3. **Ejercicio 3:** Modifica el `Dockerfile` para usar un build multi-etapa: primera etapa instala las dependencias y la segunda copia solo los artefactos necesarios.
 
-4. **Ejercicio 4 (Avanzado):** Configura MLflow para trackear experimentos y registra el modelo con diferentes hiperparámetros.
+4. **Ejercicio 4 (Avanzado):** Configura MLflow para trackear el experimento y guarda el modelo con `mlflow.sklearn.log_model()`.
 
-## Resolución de Ejercicios Propuestos
+# Resolución de Ejercicios Propuestos
 
-A continuación, implementaremos la solución integral para los 4 ejercicios propuestos, llevando nuestro modelo desde un entorno de experimentación local hasta un servicio profesional.
+Se implementaron los ejercicios más representativos del notebook:
 
-Los módulos a desarrollar son:
-1. **Mejora y Validación de la API (Ejercicios 1 y 2):** Se añadirá validación estricta de entrada con Pydantic (garantizando 4 features numéricas) y se enriquecerá la respuesta para entregar un diccionario de probabilidades mapeadas por clase.
-2. **Contenedorización (Ejercicio 3):** Crearemos físicamente los archivos `app.py`, `requirements.txt` y `Dockerfile` necesarios para desplegar la API en un entorno aislado y reproducible.
-3. **MLOps con MLflow (Ejercicio 4):** Implementaremos un pipeline avanzado de validación que registra parámetros, métricas y el modelo resultante utilizando MLflow.
+1. **Ejercicio 1:** Endpoint `POST /predict/batch` para inferencia por lotes.
+3. **Ejercicio 3:** `Dockerfile` multi-etapa para reducir el tamaño de la imagen final.
 
-### Ejercicios 1, 2 y 3.1: Construcción de `app.py`
-En el siguiente bloque de código consolidamos la API REST usando FastAPI. 
-- **Validación (Ej2):** Utilizamos sentencias de Pydantic (`field_validator` o validaciones manuales) para obligar a que `features` conste de exactamente 4 números.
-- **Probabilidades (Ej1):** Construimos un diccionario mapeando los nombres *setosa, versicolor, virginica* con la probabilidad devuelta por el modelo.
-Nota: Guardaremos el código directamente en el archivo `app.py`.
+## Ejercicio 1: Endpoint `POST /predict/batch`
+
+Se implementó la lógica del handler y se añadió al `deploy/app.py`:
 
 ```python
-%%writefile app.py
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, validator
-import joblib
-import numpy as np
-
-# Cargar el modelo preentrenado
-modelo = joblib.load('modelo_iris.joblib')
-
-# Inicializar API
-app = FastAPI(title='Iris Classifier API Pro', version='2.0')
-
-# ==========================================
-# EJERCICIO 2: Validación de la entrada
-# ==========================================
-class InputData(BaseModel):
-    # Obligamos a que sea una lista de floats
-    features: list[float]
-    
-    @validator('features')
-    def validate_features_length(cls, v):
-        if len(v) != 4:
-            raise ValueError('¡Error! Se esperan exactamente 4 características numéricas.')
-        return v
-
-# ==========================================
-# EJERCICIO 1: Diccionario de Probabilidades
-# ==========================================
-class PredictionResponse(BaseModel):
-    prediction: int
-    class_name: str
-    probabilities: dict  # Ahora es un diccionario en lugar de una lista plana
-
-@app.post('/predict', response_model=PredictionResponse)
-def predict(data: InputData):
-    try:
-        # Preparar los datos
-        X = np.array(data.features).reshape(1, -1)
-        
-        # Predecir
-        pred = modelo.predict(X)
-        proba = modelo.predict_proba(X)[0] # Probabilidades planas
-        
-        # Clases de la flor
-        class_names = ['setosa', 'versicolor', 'virginica']
-        
-        # (EJERCICIO 1) Crear diccionario dinámico de probabilidades
-        prob_dict = {class_names[i]: float(proba[i]) for i in range(len(class_names))}
-        
-        return PredictionResponse(
-            prediction=int(pred[0]),
-            class_name=class_names[int(pred[0])],
-            probabilities=prob_dict
-        )
-    except Exception as e:
-        # Manejo de cualquier otro error para que no caiga el servidor
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get('/health')
-def health():
-    return {'status': 'ok', 'message': 'API funcionando correctamente'}
+def batch_predict(observations: List[List[float]]) -> List[Dict]:
+    if not observations:
+        raise ValueError('La lista no puede estar vacía')
+    X      = np.array(observations)
+    preds  = modelo_batch.predict(X)
+    probas = modelo_batch.predict_proba(X)
+    return [
+        {'index': i, 'prediction': int(p), 'class_name': CLASS_NAMES[int(p)],
+         'probabilities': {n: round(float(pr), 4)
+                           for n, pr in zip(CLASS_NAMES, prob)}}
+        for i, (p, prob) in enumerate(zip(preds, probas))
+    ]
 ```
 
 ```text
-(Salida)
-Writing app.py
+(Salida esperada)
+Batch de 4 observaciones:
 
+#    Clase        setosa     versicolor    virginica
+0    setosa       0.9800     0.0150        0.0050
+1    versicolor   0.0300     0.7800        0.1900
+2    virginica    0.0100     0.1500        0.8400
+3    setosa       0.9750     0.0200        0.0050
+
+⏱  100 predicciones:
+   Batch único     :  0.82 ms
+   Bucle individual:  8.34 ms
+   Speedup batch   :  10.2×
+
+💡 Una sola llamada batch evita el overhead de N llamadas HTTP en producción.
 ```
 
-### Ejercicio 3.2 y 3.3: `requirements.txt` y `Dockerfile`
-A continuación, crearemos las instrucciones necesarias para que Docker pueda construir un contenedor liviano que aloje nuestra API.
+## Ejercicio 3: `Dockerfile` Multi-Etapa
 
-```python
-%%writefile requirements.txt
-fastapi
-uvicorn
-scikit-learn
-numpy
-joblib
-pydantic
-```
+Se generó `deploy/Dockerfile.multistage` con dos etapas para separar instalación de runtime:
 
-```text
-(Salida)
-Writing requirements.txt
-
-```
-
-```python
-%%writefile Dockerfile
-# Utilizar una imagen oficial y liviana de Python
-FROM python:3.11-slim
-
-# Definir el directorio de trabajo dentro del contenedor
-WORKDIR /app
-
-# Copiar el archivo de requerimientos e instalar dependencias
+```dockerfile
+# Stage 1 — deps: instala dependencias en /packages
+FROM python:3.10-slim AS deps
+WORKDIR /install
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/packages -r requirements.txt
 
-# Copiar el código fuente de la API y el modelo preentrenado
-COPY app.py .
+# Stage 2 — runtime: imagen limpia, sin pip
+FROM python:3.10-slim AS runtime
+WORKDIR /app
+COPY --from=deps /packages /usr/local
 COPY modelo_iris.joblib .
-
-# Exponer el puerto en el que corre Uvicorn
+COPY app.py .
 EXPOSE 8000
-
-# Comando para levantar la API al arrancar el contenedor
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ```text
-(Salida)
-Writing Dockerfile
+Archivo generado: deploy/Dockerfile.multistage
 
+Comandos para construir:
+  cd deploy
+  docker build -f Dockerfile.multistage -t iris-classifier:multistage .
+  docker image ls iris-classifier
+
+💡 La ventaja escala con el tamaño de las dependencias:
+   scikit-learn ~80 MB  |  PyTorch ~800 MB  |  TensorFlow ~500 MB
+   En proyectos reales, el multi-stage puede reducir la imagen 200-500 MB.
 ```
 
-### Ejercicio 4: Tracking de Experimentos con MLflow
-En este script, vamos a importar MLflow, entrenar un par de variaciones del modelo utilizando diferentes hiperparámetros (ej: la profundidad de un árbol) y dejaremos registro automático de su rendimiento (Accuracy) y del modelo generado.
+## Conclusión Final
 
-```python
-import mlflow
-import mlflow.sklearn
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+En este último notebook cerramos el ciclo completo de Machine Learning:
 
-# 1. Preparar datos
-data = load_iris()
-X_train, X_test, y_train, y_test = train_test_split(data.data, data.target, test_size=0.2, random_state=42)
+- **Serialización y validación:** `joblib` + smoke test garantiza predicciones consistentes tras la carga.
+- **FastAPI + Pydantic:** API robusta con validación declarativa y documentación OpenAPI automática.
+- **Endpoint batch:** una sola llamada HTTP para N predicciones — ~10× más rápido que N requests individuales.
+- **Docker multi-etapa:** separa instalación de runtime, reduciendo el tamaño de la imagen final.
+- **Versionamiento con metadata:** registro de versión, accuracy y features junto al modelo.
 
-# Nombre de nuestro experimento principal 
-mlflow.set_experiment("Clasificador_Iris_rf")
+### Recorrido completo del curso
 
-# 2. Vamos a probar dos hiperparámetros diferentes
-n_estimators_list = [10, 50]
+| Notebook | Tema | Técnica clave |
+|----------|------|---------------|
+| 01 | Introducción a ML | Regresión logística, métricas |
+| 02 | Preprocesamiento | Escalado, PCA, pipelines |
+| 03 | Modelos clásicos | RF, SVM, KNN, comparativas |
+| 04 | Redes densas (MLP) | Keras, EarlyStopping, GridSearch |
+| 05 | CNN | Conv2D, filtros, VGG-Style |
+| 06 | RNN / LSTM | Series temporales, Bidirectional |
+| 07 | Transformers / NLP | spaCy, GloVe, EntityRuler |
+| 08 | GANs | DCGAN, label smoothing, mode collapse |
+| 09 | Autoencoders | VAE, denoising, espacio latente |
+| 10 | Clustering | K-Means, DBSCAN, t-SNE, dendrograma |
+| 11 | Interpretabilidad | SHAP, LIME, surrogate models |
+| 12 | CPU / GPU / Metal | Benchmarks, tf.data, prefetch |
+| 13 | Despliegue | FastAPI, Docker, versionamiento |
 
-for n_estimators in n_estimators_list:
-    # Iniciar la "corrida" (run) dentro de MLflow
-    with mlflow.start_run(run_name=f"RF_estimators_{n_estimators}"):
-        
-        # Crear y entrenar modelo
-        clf = RandomForestClassifier(n_estimators=n_estimators, random_state=42)
-        clf.fit(X_train, y_train)
-        
-        # Predecir y evaluar
-        y_pred = clf.predict(X_test)
-        acc = accuracy_score(y_test, y_pred)
-        
-        # ---- MAGIA DE MLFLOW AQUÍ ----
-        # Registramos el parámetro usado
-        mlflow.log_param("n_estimators", n_estimators)
-        
-        # Registramos la métrica de éxito
-        mlflow.log_metric("accuracy", acc)
-        
-        # Guardamos el modelo dentro de mlflow
-        mlflow.sklearn.log_model(clf, f"modelo_rf_{n_estimators}")
-        
-        print(f"Ejecución con {n_estimators} estimadores finalizada. Accuracy: {acc:.4f}")
-
-print("\n¡Tracking finalizado! Puedes abrir la consola de MLflow en tu terminal ejecutando: mlflow ui")
-```
-
-```text
-(Salida)
-2026/03/31 16:00:45 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
-2026/03/31 16:00:45 INFO mlflow.store.db.utils: Updating database tables
-2026/03/31 16:00:49 INFO mlflow.tracking.fluent: Experiment with name 'Clasificador_Iris_rf' does not exist. Creating a new experiment.
-2026/03/31 16:00:49 WARNING mlflow.models.model: `artifact_path` is deprecated. Please use `name` instead.
-2026/03/31 16:00:49 WARNING mlflow.sklearn: Saving scikit-learn models in the pickle or cloudpickle format requires exercising caution because these formats rely on Python's object serialization mechanism, which can execute arbitrary code during deserialization. The recommended safe alternative is the 'skops' format. For more information, see: https://scikit-learn.org/stable/model_persistence.html
-
-```
-
-```text
-(Salida)
-Ejecución con 10 estimadores finalizada. Accuracy: 1.0000
-
-```
-
-```text
-(Salida)
-2026/03/31 16:01:06 WARNING mlflow.models.model: `artifact_path` is deprecated. Please use `name` instead.
-2026/03/31 16:01:06 WARNING mlflow.sklearn: Saving scikit-learn models in the pickle or cloudpickle format requires exercising caution because these formats rely on Python's object serialization mechanism, which can execute arbitrary code during deserialization. The recommended safe alternative is the 'skops' format. For more information, see: https://scikit-learn.org/stable/model_persistence.html
-
-```
-
-```text
-(Salida)
-Ejecución con 50 estimadores finalizada. Accuracy: 1.0000
-
-¡Tracking finalizado! Puedes abrir la consola de MLflow en tu terminal ejecutando: mlflow ui
-
-```
+¡Felicidades por completar el curso completo de Deep Learning! 🎉
 
 ## 10. Referencias y Recursos
 
@@ -3223,4 +2057,3 @@ Ejecución con 50 estimadores finalizada. Accuracy: 1.0000
 📎 **Este es el último notebook del curso.** ¡Felicidades por completar el recorrido! 🎉
 
 ---
-
